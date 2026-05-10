@@ -259,9 +259,11 @@ public class MainActivity extends Activity {
         setStatus("Connecting...");
         request("GET", "/api/health", null, false, result -> {
             if (!result.ok) {
+                updateConnectionHistoryStatus(baseUrl, "fail");
                 setStatus("Health failed: " + result.error);
                 return;
             }
+            updateConnectionHistoryStatus(baseUrl, "ok");
             loadRemoteConfig();
         });
     }
@@ -270,7 +272,7 @@ public class MainActivity extends Activity {
         baseUrl = trimTrailingSlash(baseUrlInput.getText().toString().trim());
         token = tokenInput.getText().toString().trim();
         saveSettings();
-        rememberConnection(baseUrl, token);
+        rememberConnection(baseUrl, token, "saved");
         setStatus("Saved");
     }
 
@@ -649,9 +651,12 @@ public class MainActivity extends Activity {
             pairUrl = uri.getQueryParameter("u");
         }
         if (pairUrl != null && !pairUrl.isEmpty()) {
+            final String finalPairUrl = pairUrl;
+            saveScannedBaseUrl(baseUrlFromPairEndpoint(finalPairUrl));
             setStatus("Pairing from PC...");
-            requestAbsolute(pairUrl, result -> {
+            requestAbsolute(finalPairUrl, result -> {
                 if (!result.ok) {
+                    updateConnectionHistoryStatus(baseUrlFromPairEndpoint(finalPairUrl), "fail");
                     setStatus("Pairing failed: " + result.error);
                     return;
                 }
@@ -684,9 +689,11 @@ public class MainActivity extends Activity {
             String scheme = uri.getScheme();
             String path = uri.getPath();
             if (("http".equals(scheme) || "https".equals(scheme)) && path != null && path.contains("/api/mobile-pair")) {
+                saveScannedBaseUrl(baseUrlFromPairEndpoint(contents));
                 setStatus("Pairing from QR...");
                 requestAbsolute(contents, result -> {
                     if (!result.ok) {
+                        updateConnectionHistoryStatus(baseUrlFromPairEndpoint(contents), "fail");
                         setStatus("Pairing failed: " + result.error);
                         return;
                     }
@@ -696,11 +703,7 @@ public class MainActivity extends Activity {
                 return;
             }
             if ("http".equals(scheme) || "https".equals(scheme)) {
-                baseUrl = trimTrailingSlash(contents);
-                baseUrlInput.setText(baseUrl);
-                tokenInput.setText(token);
-                saveSettings();
-                rememberConnection(baseUrl, token);
+                saveScannedBaseUrl(contents);
                 setStatus("Paired " + baseUrl);
                 connect();
                 return;
@@ -708,6 +711,32 @@ public class MainActivity extends Activity {
             setStatus("Pairing failed: unsupported QR");
         } catch (Exception ex) {
             setStatus("Pairing failed: " + ex.getMessage());
+        }
+    }
+
+    private void saveScannedBaseUrl(String scannedBaseUrl) {
+        String nextBaseUrl = trimTrailingSlash(scannedBaseUrl == null ? "" : scannedBaseUrl.trim());
+        if (nextBaseUrl.isEmpty()) {
+            return;
+        }
+        baseUrl = nextBaseUrl;
+        baseUrlInput.setText(baseUrl);
+        tokenInput.setText(token);
+        saveSettings();
+        rememberConnection(baseUrl, token, "saved");
+    }
+
+    private String baseUrlFromPairEndpoint(String endpoint) {
+        try {
+            Uri uri = Uri.parse(endpoint);
+            String scheme = uri.getScheme();
+            String authority = uri.getEncodedAuthority();
+            if ((scheme == null || scheme.isEmpty()) || (authority == null || authority.isEmpty())) {
+                return endpoint;
+            }
+            return scheme + "://" + authority;
+        } catch (Exception ignored) {
+            return endpoint;
         }
     }
 
@@ -735,7 +764,7 @@ public class MainActivity extends Activity {
         baseUrlInput.setText(baseUrl);
         tokenInput.setText(token);
         saveSettings();
-        rememberConnection(baseUrl, token);
+        rememberConnection(baseUrl, token, "ok");
         setStatus("Paired " + baseUrl);
     }
     private void handleAutomationIntent(Intent intent) {
@@ -892,8 +921,9 @@ public class MainActivity extends Activity {
                 String url = trimTrailingSlash(item.optString("baseUrl", "").trim());
                 String savedToken = item.optString("token", "").trim();
                 long lastUsedAt = item.optLong("lastUsedAt", 0);
+                String status = item.optString("status", "unknown");
                 if (!url.isEmpty()) {
-                    connectionHistory.add(new ConnectionHistoryItem(url, savedToken, lastUsedAt));
+                    connectionHistory.add(new ConnectionHistoryItem(url, savedToken, lastUsedAt, status));
                 }
             }
         } catch (Exception ignored) {
@@ -901,7 +931,7 @@ public class MainActivity extends Activity {
         }
     }
 
-    private void rememberConnection(String url, String savedToken) {
+    private void rememberConnection(String url, String savedToken, String status) {
         String normalizedUrl = trimTrailingSlash(url.trim());
         if (normalizedUrl.isEmpty()) {
             return;
@@ -912,11 +942,27 @@ public class MainActivity extends Activity {
                 connectionHistory.remove(i);
             }
         }
-        connectionHistory.add(0, new ConnectionHistoryItem(normalizedUrl, savedToken, System.currentTimeMillis()));
+        connectionHistory.add(0, new ConnectionHistoryItem(normalizedUrl, savedToken, System.currentTimeMillis(), normalizeConnectionStatus(status)));
         while (connectionHistory.size() > MAX_CONNECTION_HISTORY) {
             connectionHistory.remove(connectionHistory.size() - 1);
         }
         saveConnectionHistory();
+    }
+
+    private void updateConnectionHistoryStatus(String url, String status) {
+        String normalizedUrl = trimTrailingSlash(url == null ? "" : url.trim());
+        if (normalizedUrl.isEmpty()) {
+            return;
+        }
+        for (ConnectionHistoryItem item : connectionHistory) {
+            if (item.baseUrl.equals(normalizedUrl)) {
+                item.status = normalizeConnectionStatus(status);
+                item.lastUsedAt = System.currentTimeMillis();
+                saveConnectionHistory();
+                return;
+            }
+        }
+        rememberConnection(normalizedUrl, token, status);
     }
 
     private void saveConnectionHistory() {
@@ -927,6 +973,7 @@ public class MainActivity extends Activity {
                 json.put("baseUrl", item.baseUrl);
                 json.put("token", item.token);
                 json.put("lastUsedAt", item.lastUsedAt);
+                json.put("status", normalizeConnectionStatus(item.status));
                 items.put(json);
             } catch (Exception ignored) {
             }
@@ -943,9 +990,30 @@ public class MainActivity extends Activity {
         SimpleDateFormat format = new SimpleDateFormat("MM-dd HH:mm", Locale.getDefault());
         for (ConnectionHistoryItem item : connectionHistory) {
             String time = item.lastUsedAt > 0 ? format.format(new Date(item.lastUsedAt)) : "unknown";
-            labels.add(item.baseUrl + "    " + time);
+            labels.add(statusBadge(item.status) + " " + item.baseUrl + "    " + time);
         }
         return labels;
+    }
+
+    private String normalizeConnectionStatus(String status) {
+        if ("ok".equals(status) || "fail".equals(status) || "saved".equals(status)) {
+            return status;
+        }
+        return "unknown";
+    }
+
+    private String statusBadge(String status) {
+        String normalized = normalizeConnectionStatus(status);
+        if ("ok".equals(normalized)) {
+            return "[OK]";
+        }
+        if ("fail".equals(normalized)) {
+            return "[FAIL]";
+        }
+        if ("saved".equals(normalized)) {
+            return "[SAVED]";
+        }
+        return "[?]";
     }
 
     private EditText input(String hint, String value) {
@@ -1225,11 +1293,13 @@ public class MainActivity extends Activity {
         String baseUrl;
         String token;
         long lastUsedAt;
+        String status;
 
-        ConnectionHistoryItem(String baseUrl, String token, long lastUsedAt) {
+        ConnectionHistoryItem(String baseUrl, String token, long lastUsedAt, String status) {
             this.baseUrl = baseUrl;
             this.token = token;
             this.lastUsedAt = lastUsedAt;
+            this.status = status;
         }
     }
 }
