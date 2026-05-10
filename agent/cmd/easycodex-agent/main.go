@@ -170,6 +170,8 @@ type launchListClient interface {
 	List(ctx context.Context, class string) (json.RawMessage, error)
 }
 
+var hasGUIProcess = weztermGUIProcessExists
+
 func (tracked *trackedWezTerm) Launch(ctx context.Context, class string) (int, error) {
 	pid, err := tracked.cli.Launch(ctx, class)
 	if err != nil {
@@ -221,11 +223,11 @@ func autoLaunchInstances(ctx context.Context, logger *slog.Logger, weztermClient
 			continue
 		}
 
-		exists, err := instanceHasSessions(ctx, weztermClient, instance.Class)
+		exists, err := hasGUIProcess(instance.Class)
 		if err != nil {
-			logger.Warn("auto launch session check failed", "instance", id, "class", instance.Class, "error", err)
+			logger.Warn("auto launch gui check failed", "instance", id, "class", instance.Class, "error", err)
 		} else if exists {
-			logger.Info("auto launch skipped existing session", "instance", id, "class", instance.Class)
+			logger.Info("auto launch skipped existing gui", "instance", id, "class", instance.Class)
 			continue
 		}
 
@@ -236,6 +238,19 @@ func autoLaunchInstances(ctx context.Context, logger *slog.Logger, weztermClient
 		}
 		logger.Info("auto launched instance", "instance", id, "class", instance.Class, "pid", pid)
 	}
+}
+
+func weztermGUIProcessExists(class string) (bool, error) {
+	if runtime.GOOS != "windows" {
+		return false, nil
+	}
+	escapedClass := strings.ReplaceAll(class, "'", "''")
+	script := fmt.Sprintf(`$class = '%s'; $pattern = '(^|\s)--class\s+' + [regex]::Escape($class) + '($|\s)'; $items = Get-CimInstance Win32_Process -Filter "Name = 'wezterm-gui.exe'" | Where-Object { $_.CommandLine -match $pattern }; if ($items) { 'true' } else { 'false' }`, escapedClass)
+	out, err := exec.Command("powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", script).Output()
+	if err != nil {
+		return false, err
+	}
+	return strings.TrimSpace(string(out)) == "true", nil
 }
 
 func instanceHasSessions(ctx context.Context, weztermClient launchListClient, class string) (bool, error) {

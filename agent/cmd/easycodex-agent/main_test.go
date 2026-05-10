@@ -39,7 +39,10 @@ func TestInstanceHasSessions(t *testing.T) {
 	}
 }
 
-func TestAutoLaunchSkipsWhenSessionExists(t *testing.T) {
+func TestAutoLaunchSkipsWhenGUIExists(t *testing.T) {
+	withGUIProcessChecker(t, func(class string) (bool, error) {
+		return true, nil
+	})
 	client := &fakeLaunchListClient{listPayload: json.RawMessage(`[{"pane_id":1}]`)}
 	cfg := config.Config{
 		Root:       `D:\EasyCodex`,
@@ -54,7 +57,28 @@ func TestAutoLaunchSkipsWhenSessionExists(t *testing.T) {
 	}
 }
 
+func TestAutoLaunchLaunchesWhenGUIMissingEvenWhenSessionExists(t *testing.T) {
+	withGUIProcessChecker(t, func(class string) (bool, error) {
+		return false, nil
+	})
+	client := &fakeLaunchListClient{listPayload: json.RawMessage(`[{"pane_id":1}]`)}
+	cfg := config.Config{
+		Root:       `D:\EasyCodex`,
+		AutoLaunch: []string{"main"},
+		Instances:  []config.Instance{{ID: "main", Name: "main", Class: "easycodex"}},
+	}
+
+	autoLaunchInstances(context.Background(), discardLogger(), client, cfg)
+
+	if len(client.launches) != 1 || client.launches[0] != "easycodex" {
+		t.Fatalf("launches = %#v", client.launches)
+	}
+}
+
 func TestAutoLaunchLaunchesWhenListIsEmpty(t *testing.T) {
+	withGUIProcessChecker(t, func(class string) (bool, error) {
+		return false, nil
+	})
 	client := &fakeLaunchListClient{listPayload: json.RawMessage(`[]`)}
 	cfg := config.Config{
 		Root:       `D:\EasyCodex`,
@@ -71,4 +95,13 @@ func TestAutoLaunchLaunchesWhenListIsEmpty(t *testing.T) {
 
 func discardLogger() *slog.Logger {
 	return slog.New(slog.NewTextHandler(io.Discard, nil))
+}
+
+func withGUIProcessChecker(t *testing.T, checker func(string) (bool, error)) {
+	t.Helper()
+	previous := hasGUIProcess
+	hasGUIProcess = checker
+	t.Cleanup(func() {
+		hasGUIProcess = previous
+	})
 }
