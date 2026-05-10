@@ -695,6 +695,16 @@ public class MainActivity extends Activity {
                 });
                 return;
             }
+            if ("http".equals(scheme) || "https".equals(scheme)) {
+                baseUrl = trimTrailingSlash(contents);
+                baseUrlInput.setText(baseUrl);
+                tokenInput.setText(token);
+                saveSettings();
+                rememberConnection(baseUrl, token);
+                setStatus("Paired " + baseUrl);
+                connect();
+                return;
+            }
             setStatus("Pairing failed: unsupported QR");
         } catch (Exception ex) {
             setStatus("Pairing failed: " + ex.getMessage());
