@@ -12,15 +12,24 @@ function New-EasyCodexIcon {
     $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
     $graphics.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
     $rect = New-Object System.Drawing.Rectangle 0, 0, 64, 64
-    $brush = New-Object System.Drawing.Drawing2D.LinearGradientBrush $rect, ([System.Drawing.Color]::FromArgb(15, 139, 141)), ([System.Drawing.Color]::FromArgb(245, 158, 11)), 45
-    $graphics.FillRectangle($brush, $rect)
-    $font = New-Object System.Drawing.Font 'Segoe UI', 20, ([System.Drawing.FontStyle]::Bold)
-    $textBrush = [System.Drawing.Brushes]::White
-    $graphics.DrawString('EC', $font, $textBrush, 10, 15)
-    $pen = New-Object System.Drawing.Pen ([System.Drawing.Color]::FromArgb(235, 255, 255, 255)), 4
-    $graphics.DrawLine($pen, 14, 48, 50, 48)
+    $brush = New-Object System.Drawing.Drawing2D.LinearGradientBrush $rect, ([System.Drawing.Color]::FromArgb(29, 78, 216)), ([System.Drawing.Color]::FromArgb(14, 165, 233)), 45
+    $graphics.FillEllipse($brush, 4, 4, 56, 56)
+
+    $ringPen = New-Object System.Drawing.Pen ([System.Drawing.Color]::FromArgb(130, 219, 234, 254)), 3
+    $graphics.DrawEllipse($ringPen, 6, 6, 52, 52)
+
+    $promptPen = New-Object System.Drawing.Pen ([System.Drawing.Color]::White), 6
+    $promptPen.StartCap = [System.Drawing.Drawing2D.LineCap]::Round
+    $promptPen.EndCap = [System.Drawing.Drawing2D.LineCap]::Round
+    $graphics.DrawLine($promptPen, 19, 23, 29, 32)
+    $graphics.DrawLine($promptPen, 19, 41, 29, 32)
+
+    $cursorPen = New-Object System.Drawing.Pen ([System.Drawing.Color]::FromArgb(230, 186, 230, 253)), 6
+    $cursorPen.StartCap = [System.Drawing.Drawing2D.LineCap]::Round
+    $cursorPen.EndCap = [System.Drawing.Drawing2D.LineCap]::Round
+    $graphics.DrawLine($cursorPen, 37, 41, 48, 41)
     $icon = [System.Drawing.Icon]::FromHandle($bitmap.GetHicon())
-    return @{ Icon = $icon; Bitmap = $bitmap; Graphics = $graphics; Brush = $brush; Font = $font; Pen = $pen }
+    return @{ Icon = $icon; Bitmap = $bitmap; Graphics = $graphics; Brush = $brush; RingPen = $ringPen; PromptPen = $promptPen; CursorPen = $cursorPen }
 }
 
 $baseUrl = $PairingUrl -replace '/pairing$', ''
@@ -87,6 +96,7 @@ $notify.Dispose()
 $iconParts.Icon.Dispose()
 $iconParts.Graphics.Dispose()
 $iconParts.Brush.Dispose()
-$iconParts.Font.Dispose()
-$iconParts.Pen.Dispose()
+$iconParts.RingPen.Dispose()
+$iconParts.PromptPen.Dispose()
+$iconParts.CursorPen.Dispose()
 $iconParts.Bitmap.Dispose()
