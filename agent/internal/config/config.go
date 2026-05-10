@@ -19,19 +19,26 @@ const (
 )
 
 type Config struct {
-	Listen                 string     `json:"listen"`
-	Root                   string     `json:"root"`
-	Token                  string     `json:"token"`
-	CommandTimeoutSeconds  int        `json:"commandTimeoutSeconds"`
-	AutoLaunch             []string   `json:"autoLaunch"`
-	CloseLaunchedGUIOnExit bool       `json:"closeLaunchedGuiOnExit"`
-	Instances              []Instance `json:"instances"`
+	Listen                 string         `json:"listen"`
+	Root                   string         `json:"root"`
+	Token                  string         `json:"token"`
+	CommandTimeoutSeconds  int            `json:"commandTimeoutSeconds"`
+	AutoLaunch             []string       `json:"autoLaunch"`
+	CloseLaunchedGUIOnExit bool           `json:"closeLaunchedGuiOnExit"`
+	Instances              []Instance     `json:"instances"`
+	MobileDefaults         MobileDefaults `json:"mobileDefaults"`
 }
 
 type Instance struct {
 	ID    string `json:"id"`
 	Name  string `json:"name"`
 	Class string `json:"class"`
+}
+
+type MobileDefaults struct {
+	InstanceID string   `json:"instanceId"`
+	CWD        string   `json:"cwd"`
+	Command    []string `json:"command"`
 }
 
 func Load(path string) (Config, bool, error) {
@@ -91,6 +98,11 @@ func Defaults() Config {
 		Instances: []Instance{
 			{ID: "main", Name: "main", Class: "easycodex"},
 		},
+		MobileDefaults: MobileDefaults{
+			InstanceID: "main",
+			CWD:        `D:\mgame`,
+			Command:    []string{"cmd.exe", "/k", `cd /d D:\mgame && codex --dangerously-bypass-approvals-and-sandbox`},
+		},
 	}
 	Normalize(&cfg)
 	return cfg
@@ -110,6 +122,14 @@ func Normalize(cfg *Config) {
 		cfg.Instances[i].ID = strings.TrimSpace(cfg.Instances[i].ID)
 		cfg.Instances[i].Name = strings.TrimSpace(cfg.Instances[i].Name)
 		cfg.Instances[i].Class = strings.TrimSpace(cfg.Instances[i].Class)
+	}
+	cfg.MobileDefaults.InstanceID = strings.TrimSpace(cfg.MobileDefaults.InstanceID)
+	cfg.MobileDefaults.CWD = strings.TrimSpace(cfg.MobileDefaults.CWD)
+	for i := range cfg.MobileDefaults.Command {
+		cfg.MobileDefaults.Command[i] = strings.TrimSpace(cfg.MobileDefaults.Command[i])
+	}
+	if cfg.MobileDefaults.InstanceID == "" && len(cfg.Instances) > 0 {
+		cfg.MobileDefaults.InstanceID = cfg.Instances[0].ID
 	}
 	if cfg.Listen == "" {
 		cfg.Listen = DefaultListen
@@ -139,6 +159,14 @@ func Validate(cfg Config) error {
 			return fmt.Errorf("duplicate instance id %q", instance.ID)
 		}
 		seen[instance.ID] = struct{}{}
+	}
+	if cfg.MobileDefaults.InstanceID != "" {
+		if _, ok := seen[cfg.MobileDefaults.InstanceID]; !ok {
+			return fmt.Errorf("mobile default instance %q is not configured", cfg.MobileDefaults.InstanceID)
+		}
+	}
+	if len(cfg.MobileDefaults.Command) == 0 {
+		return errors.New("mobile default command is required")
 	}
 	for _, id := range cfg.AutoLaunch {
 		if id == "" {

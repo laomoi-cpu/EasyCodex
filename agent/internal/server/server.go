@@ -36,11 +36,12 @@ type Server struct {
 }
 
 type pairingResponse struct {
-	Service     string             `json:"service"`
-	Network     netinfo.Info       `json:"network"`
-	Token       string             `json:"token"`
-	Instances   []instanceResponse `json:"instances"`
-	GeneratedAt string             `json:"generatedAt"`
+	Service     string                 `json:"service"`
+	Network     netinfo.Info           `json:"network"`
+	Token       string                 `json:"token"`
+	Instances   []instanceResponse     `json:"instances"`
+	Defaults    mobileDefaultsResponse `json:"defaults"`
+	GeneratedAt string                 `json:"generatedAt"`
 }
 
 type apiResponse struct {
@@ -53,6 +54,17 @@ type instanceResponse struct {
 	ID    string `json:"id"`
 	Name  string `json:"name"`
 	Class string `json:"class"`
+}
+
+type mobileDefaultsResponse struct {
+	InstanceID string   `json:"instanceId"`
+	CWD        string   `json:"cwd"`
+	Command    []string `json:"command"`
+}
+
+type appConfigResponse struct {
+	Instances []instanceResponse     `json:"instances"`
+	Defaults  mobileDefaultsResponse `json:"defaults"`
 }
 
 type sendTextRequest struct {
@@ -152,6 +164,7 @@ func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/health", s.health)
 	mux.HandleFunc("GET /api/pairing", s.pairing)
+	mux.HandleFunc("GET /api/config", s.auth(s.appConfig))
 	mux.HandleFunc("GET /api/instances", s.auth(s.instancesList))
 	mux.HandleFunc("POST /api/instances/{instanceID}/launch", s.auth(s.launch))
 	mux.HandleFunc("GET /api/instances/{instanceID}/sessions", s.auth(s.sessions))
@@ -185,8 +198,25 @@ func (s *Server) pairing(w http.ResponseWriter, r *http.Request) {
 		Network:     netinfo.Inspect(s.cfg.Listen),
 		Token:       s.cfg.Token,
 		Instances:   s.instanceResponses(),
+		Defaults:    s.mobileDefaultsResponse(),
 		GeneratedAt: time.Now().Format(time.RFC3339Nano),
 	})
+}
+
+func (s *Server) appConfig(w http.ResponseWriter, r *http.Request) {
+	writeOK(w, http.StatusOK, appConfigResponse{
+		Instances: s.instanceResponses(),
+		Defaults:  s.mobileDefaultsResponse(),
+	})
+}
+
+func (s *Server) mobileDefaultsResponse() mobileDefaultsResponse {
+	command := append([]string(nil), s.cfg.MobileDefaults.Command...)
+	return mobileDefaultsResponse{
+		InstanceID: s.cfg.MobileDefaults.InstanceID,
+		CWD:        s.cfg.MobileDefaults.CWD,
+		Command:    command,
+	}
 }
 
 func (s *Server) instanceResponses() []instanceResponse {

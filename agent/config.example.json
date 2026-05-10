@@ -1,15 +1,26 @@
 {
-  "listen": "127.0.0.1:8765",
-  "root": "",
-  "token": "",
-  "commandTimeoutSeconds": 5,
-  "autoLaunch": ["main"],
-  "closeLaunchedGuiOnExit": false,
-  "instances": [
-    {
-      "id": "main",
-      "name": "main",
-      "class": "easycodex"
-    }
-  ]
+    "listen":  "127.0.0.1:8765",
+    "root":  "",
+    "token":  "",
+    "commandTimeoutSeconds":  5,
+    "autoLaunch":  [
+                       "main"
+                   ],
+    "closeLaunchedGuiOnExit":  false,
+    "instances":  [
+                      {
+                          "id":  "main",
+                          "name":  "main",
+                          "class":  "easycodex"
+                      }
+                  ],
+    "mobileDefaults":  {
+                           "instanceId":  "main",
+                           "cwd":  "D:\\mgame",
+                           "command":  [
+                                           "cmd.exe",
+                                           "/k",
+                                           "cd /d D:\\mgame \u0026\u0026 codex --dangerously-bypass-approvals-and-sandbox"
+                                       ]
+                       }
 }

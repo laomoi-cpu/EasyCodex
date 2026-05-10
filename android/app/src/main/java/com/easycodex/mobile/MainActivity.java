@@ -54,6 +54,9 @@ public class MainActivity extends Activity {
     private String baseUrl = "http://127.0.0.1:8765";
     private String token = "easycodex-dev-token";
     private String instanceId = "main";
+    private String defaultInstanceId = "main";
+    private String defaultCwd = "D:\\mgame";
+    private final List<String> defaultCommand = new ArrayList<>();
     private String paneId = "";
     private String snapshotHash = "";
     private String lastSnapshotText = "";
@@ -66,6 +69,7 @@ public class MainActivity extends Activity {
         super.onCreate(savedInstanceState);
         getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
         loadSettings();
+        ensureDefaultCommand();
         buildUi();
         handleAutomationIntent(getIntent());
     }
@@ -195,7 +199,7 @@ public class MainActivity extends Activity {
                 setStatus("Health failed: " + result.error);
                 return;
             }
-            loadInstances();
+            loadRemoteConfig();
         });
     }
 
@@ -204,6 +208,36 @@ public class MainActivity extends Activity {
         token = tokenInput.getText().toString().trim();
         saveSettings();
         setStatus("Saved");
+    }
+
+    private void loadRemoteConfig() {
+        request("GET", "/api/config", null, true, result -> {
+            if (!result.ok) {
+                setStatus("Config unavailable, using local defaults: " + result.error);
+                loadInstances();
+                return;
+            }
+            JSONObject defaults = result.data.optJSONObject("defaults");
+            if (defaults != null) {
+                defaultInstanceId = defaults.optString("instanceId", defaultInstanceId);
+                defaultCwd = defaults.optString("cwd", defaultCwd);
+                JSONArray command = defaults.optJSONArray("command");
+                if (command != null && command.length() > 0) {
+                    defaultCommand.clear();
+                    for (int i = 0; i < command.length(); i++) {
+                        String part = command.optString(i);
+                        if (!part.isEmpty()) {
+                            defaultCommand.add(part);
+                        }
+                    }
+                }
+                if (!defaultInstanceId.isEmpty()) {
+                    instanceId = defaultInstanceId;
+                }
+            }
+            setStatus("Configured " + instanceId);
+            loadInstances();
+        });
     }
 
     private void loadInstances() {
@@ -342,14 +376,15 @@ public class MainActivity extends Activity {
 
     private void spawnCodexSession() {
         saveConnection();
-        setStatus("Starting Codex @ D:\\mgame...");
+        setStatus("Starting Codex @ " + defaultCwd + "...");
         try {
             JSONObject body = new JSONObject();
             JSONArray command = new JSONArray();
-            command.put("cmd.exe");
-            command.put("/k");
-            command.put("cd /d D:\\mgame && codex --dangerously-bypass-approvals-and-sandbox");
-            body.put("cwd", "D:\\mgame");
+            ensureDefaultCommand();
+            for (String part : defaultCommand) {
+                command.put(part);
+            }
+            body.put("cwd", defaultCwd);
             body.put("command", command);
             request("POST", "/api/instances/" + instanceId + "/spawn", body, true, result -> {
                 if (!result.ok) {
@@ -503,6 +538,15 @@ public class MainActivity extends Activity {
             }
         }
         return builder.toString();
+    }
+
+    private void ensureDefaultCommand() {
+        if (!defaultCommand.isEmpty()) {
+            return;
+        }
+        defaultCommand.add("cmd.exe");
+        defaultCommand.add("/k");
+        defaultCommand.add("cd /d D:\\mgame && codex --dangerously-bypass-approvals-and-sandbox");
     }
 
     private void loadSettings() {
