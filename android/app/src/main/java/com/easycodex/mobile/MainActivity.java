@@ -15,6 +15,10 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.text.InputType;
+import android.text.SpannableStringBuilder;
+import android.text.Spanned;
+import android.text.style.BackgroundColorSpan;
+import android.text.style.ForegroundColorSpan;
 import android.util.Base64;
 import android.view.Gravity;
 import android.view.View;
@@ -29,6 +33,7 @@ import android.widget.Spinner;
 import android.widget.TextView;
 import android.widget.ArrayAdapter;
 import android.widget.AdapterView;
+import android.widget.Switch;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -54,6 +59,12 @@ import java.util.concurrent.Executors;
 public class MainActivity extends Activity {
     private static final int REQUEST_CAMERA_SCAN = 41;
     private static final int MAX_CONNECTION_HISTORY = 10;
+    private static final int[] ANSI_COLORS = new int[]{
+            0xFF0B1220, 0xFFDC2626, 0xFF16A34A, 0xFFD97706,
+            0xFF2563EB, 0xFFC026D3, 0xFF0891B2, 0xFFE6EDF3,
+            0xFF64748B, 0xFFEF4444, 0xFF22C55E, 0xFFF59E0B,
+            0xFF60A5FA, 0xFFE879F9, 0xFF22D3EE, 0xFFFFFFFF
+    };
 
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private final Handler main = new Handler(Looper.getMainLooper());
@@ -84,6 +95,7 @@ public class MainActivity extends Activity {
     private boolean polling = false;
     private int pollToken = 0;
     private int pollFailureCount = 0;
+    private boolean showTerminalColors = true;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -296,6 +308,11 @@ public class MainActivity extends Activity {
 
         EditText urlField = input("Agent URL", baseUrl);
         EditText tokenField = input("Token", token);
+        Switch colorSwitch = new Switch(this);
+        colorSwitch.setText("显示终端颜色");
+        colorSwitch.setTextSize(14);
+        colorSwitch.setTextColor(0xFF344054);
+        colorSwitch.setChecked(showTerminalColors);
         Spinner historySpinner = new Spinner(this);
         List<String> historyLabels = connectionHistoryLabels();
         ArrayAdapter<String> historyAdapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_item, historyLabels);
@@ -309,6 +326,8 @@ public class MainActivity extends Activity {
         panel.addView(fieldSpacer(), fixedHeight(dp(10)));
         panel.addView(fieldLabel("配对 Token"), matchWrap());
         panel.addView(tokenField, fixedHeight(dp(44)));
+        panel.addView(fieldSpacer(), fixedHeight(dp(10)));
+        panel.addView(colorSwitch, fixedHeight(dp(40)));
 
         LinearLayout actions = new LinearLayout(this);
         actions.setOrientation(LinearLayout.HORIZONTAL);
@@ -345,11 +364,13 @@ public class MainActivity extends Activity {
         });
         saveButton.setOnClickListener(v -> {
             applyConnectionFields(urlField, tokenField);
+            applyDisplaySettings(colorSwitch);
             saveConnection();
             dialog.dismiss();
         });
         connectButton.setOnClickListener(v -> {
             applyConnectionFields(urlField, tokenField);
+            applyDisplaySettings(colorSwitch);
             connect();
             dialog.dismiss();
         });
@@ -359,6 +380,22 @@ public class MainActivity extends Activity {
     private void applyConnectionFields(EditText urlField, EditText tokenField) {
         baseUrlInput.setText(urlField.getText().toString());
         tokenInput.setText(tokenField.getText().toString());
+    }
+
+    private void applyDisplaySettings(Switch colorSwitch) {
+        boolean nextShowTerminalColors = colorSwitch.isChecked();
+        if (showTerminalColors == nextShowTerminalColors) {
+            return;
+        }
+        showTerminalColors = nextShowTerminalColors;
+        saveDisplaySettings();
+        snapshotHash = "";
+        if (!lastSnapshotText.isEmpty()) {
+            renderTerminalText(lastSnapshotText);
+        }
+        if (!paneId.isEmpty()) {
+            pollSnapshot(pollToken);
+        }
     }
 
     private void startQrScan() {
@@ -522,6 +559,9 @@ public class MainActivity extends Activity {
             return;
         }
         String path = "/api/instances/" + instanceId + "/panes/" + paneId + "/snapshot?lines=160";
+        if (showTerminalColors) {
+            path += "&escapes=1";
+        }
         if (!snapshotHash.isEmpty()) {
             path += "&since=" + snapshotHash;
         }
@@ -539,7 +579,7 @@ public class MainActivity extends Activity {
             snapshotHash = result.data.optString("hash", snapshotHash);
             if (result.data.optBoolean("changed")) {
                 lastSnapshotText = result.data.optString("text");
-                terminalView.setText(lastSnapshotText);
+                renderTerminalText(lastSnapshotText);
                 main.postDelayed(() -> terminalScroll.fullScroll(View.FOCUS_DOWN), 40);
             }
             schedulePoll(token);
@@ -897,6 +937,7 @@ public class MainActivity extends Activity {
         SharedPreferences prefs = getSharedPreferences("easycodex", MODE_PRIVATE);
         baseUrl = prefs.getString("baseUrl", baseUrl);
         token = prefs.getString("token", token);
+        showTerminalColors = prefs.getBoolean("showTerminalColors", showTerminalColors);
         loadConnectionHistory(prefs);
     }
 
@@ -905,6 +946,13 @@ public class MainActivity extends Activity {
                 .edit()
                 .putString("baseUrl", baseUrl)
                 .putString("token", token)
+                .apply();
+    }
+
+    private void saveDisplaySettings() {
+        getSharedPreferences("easycodex", MODE_PRIVATE)
+                .edit()
+                .putBoolean("showTerminalColors", showTerminalColors)
                 .apply();
     }
 
@@ -1014,6 +1062,172 @@ public class MainActivity extends Activity {
             return "[SAVED]";
         }
         return "[?]";
+    }
+
+    private void renderTerminalText(String text) {
+        if (showTerminalColors) {
+            terminalView.setText(ansiToSpannable(text));
+        } else {
+            terminalView.setText(stripAnsi(text));
+        }
+    }
+
+    private CharSequence ansiToSpannable(String text) {
+        SpannableStringBuilder builder = new SpannableStringBuilder();
+        int fg = -1;
+        int bg = -1;
+        int index = 0;
+        int segmentStart = 0;
+        while (index < text.length()) {
+            if (text.charAt(index) == 27 && index + 1 < text.length() && text.charAt(index + 1) == '[') {
+                int commandEnd = findAnsiCommandEnd(text, index + 2);
+                if (commandEnd >= 0) {
+                    appendAnsiRun(builder, text, segmentStart, index, fg, bg);
+                    if (text.charAt(commandEnd) == 'm') {
+                        int[] next = applySgr(text.substring(index + 2, commandEnd), fg, bg);
+                        fg = next[0];
+                        bg = next[1];
+                    }
+                    index = commandEnd + 1;
+                    segmentStart = index;
+                    continue;
+                }
+            }
+            index++;
+        }
+        appendAnsiRun(builder, text, segmentStart, text.length(), fg, bg);
+        return builder;
+    }
+
+    private String stripAnsi(String text) {
+        StringBuilder builder = new StringBuilder();
+        int index = 0;
+        while (index < text.length()) {
+            if (text.charAt(index) == 27 && index + 1 < text.length() && text.charAt(index + 1) == '[') {
+                int commandEnd = findAnsiCommandEnd(text, index + 2);
+                if (commandEnd >= 0) {
+                    index = commandEnd + 1;
+                    continue;
+                }
+            }
+            builder.append(text.charAt(index));
+            index++;
+        }
+        return builder.toString();
+    }
+
+    private int findAnsiCommandEnd(String text, int start) {
+        for (int i = start; i < text.length(); i++) {
+            char ch = text.charAt(i);
+            if (ch >= '@' && ch <= '~') {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    private void appendAnsiRun(SpannableStringBuilder builder, String text, int start, int end, int fg, int bg) {
+        if (end <= start) {
+            return;
+        }
+        int spanStart = builder.length();
+        builder.append(text, start, end);
+        int spanEnd = builder.length();
+        if (fg != -1) {
+            builder.setSpan(new ForegroundColorSpan(fg), spanStart, spanEnd, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        }
+        if (bg != -1) {
+            builder.setSpan(new BackgroundColorSpan(bg), spanStart, spanEnd, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        }
+    }
+
+    private int[] applySgr(String params, int fg, int bg) {
+        if (params.isEmpty()) {
+            return new int[]{-1, -1};
+        }
+        String[] parts = params.split(";");
+        for (int i = 0; i < parts.length; i++) {
+            int code = parseAnsiCode(parts[i], 0);
+            if (code == 0) {
+                fg = -1;
+                bg = -1;
+            } else if (code == 39) {
+                fg = -1;
+            } else if (code == 49) {
+                bg = -1;
+            } else if (code >= 30 && code <= 37) {
+                fg = ansiColor(code - 30);
+            } else if (code >= 40 && code <= 47) {
+                bg = ansiColor(code - 40);
+            } else if (code >= 90 && code <= 97) {
+                fg = ansiColor(code - 90 + 8);
+            } else if (code >= 100 && code <= 107) {
+                bg = ansiColor(code - 100 + 8);
+            } else if ((code == 38 || code == 48) && i + 2 < parts.length) {
+                boolean foreground = code == 38;
+                int mode = parseAnsiCode(parts[++i], -1);
+                if (mode == 5 && i + 1 < parts.length) {
+                    int color = xtermColor(parseAnsiCode(parts[++i], -1));
+                    if (foreground) {
+                        fg = color;
+                    } else {
+                        bg = color;
+                    }
+                } else if (mode == 2 && i + 3 < parts.length) {
+                    int r = clampColor(parseAnsiCode(parts[++i], 0));
+                    int g = clampColor(parseAnsiCode(parts[++i], 0));
+                    int b = clampColor(parseAnsiCode(parts[++i], 0));
+                    int color = 0xFF000000 | (r << 16) | (g << 8) | b;
+                    if (foreground) {
+                        fg = color;
+                    } else {
+                        bg = color;
+                    }
+                }
+            }
+        }
+        return new int[]{fg, bg};
+    }
+
+    private int parseAnsiCode(String text, int fallback) {
+        try {
+            return Integer.parseInt(text.trim());
+        } catch (Exception ignored) {
+            return fallback;
+        }
+    }
+
+    private int ansiColor(int index) {
+        if (index < 0 || index >= ANSI_COLORS.length) {
+            return -1;
+        }
+        return ANSI_COLORS[index];
+    }
+
+    private int xtermColor(int index) {
+        if (index >= 0 && index < 16) {
+            return ansiColor(index);
+        }
+        if (index >= 16 && index <= 231) {
+            int value = index - 16;
+            int r = value / 36;
+            int g = (value / 6) % 6;
+            int b = value % 6;
+            return 0xFF000000 | (xtermChannel(r) << 16) | (xtermChannel(g) << 8) | xtermChannel(b);
+        }
+        if (index >= 232 && index <= 255) {
+            int level = 8 + (index - 232) * 10;
+            return 0xFF000000 | (level << 16) | (level << 8) | level;
+        }
+        return -1;
+    }
+
+    private int xtermChannel(int value) {
+        return value == 0 ? 0 : 55 + value * 40;
+    }
+
+    private int clampColor(int value) {
+        return Math.max(0, Math.min(255, value));
     }
 
     private EditText input(String hint, String value) {
