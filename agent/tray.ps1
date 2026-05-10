@@ -1,6 +1,7 @@
 param(
     [Parameter(Mandatory=$true)] [string] $PairingUrl,
-    [Parameter(Mandatory=$true)] [string] $ConfigPath
+    [Parameter(Mandatory=$true)] [string] $ConfigPath,
+    [int] $AgentPid = 0
 )
 
 Add-Type -AssemblyName System.Windows.Forms
@@ -46,6 +47,24 @@ $exitItem.Add_Click({
 $notify.ContextMenuStrip = $menu
 $notify.Add_DoubleClick({ Start-Process $PairingUrl })
 
+$agentTimer = $null
+if ($AgentPid -gt 0) {
+    $agentTimer = New-Object System.Windows.Forms.Timer
+    $agentTimer.Interval = 2000
+    $agentTimer.Add_Tick({
+        if (-not (Get-Process -Id $AgentPid -ErrorAction SilentlyContinue)) {
+            $agentTimer.Stop()
+            $notify.Visible = $false
+            [System.Windows.Forms.Application]::Exit()
+        }
+    })
+    $agentTimer.Start()
+}
+
 [System.Windows.Forms.Application]::Run()
 
+if ($agentTimer -ne $null) {
+    $agentTimer.Stop()
+    $agentTimer.Dispose()
+}
 $notify.Dispose()

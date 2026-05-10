@@ -12,6 +12,8 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime"
+	"strconv"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -127,8 +129,9 @@ func startTrayHelper(logger *slog.Logger, cfg config.Config, configPath string) 
 		logger.Warn("tray helper not found", "path", scriptPath, "error", err)
 		return
 	}
+	cleanupExistingTrayHelpers(logger, scriptPath)
 	pairingURL := netinfo.Inspect(cfg.Listen).LocalURL + "/pairing"
-	cmd := exec.Command("powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-WindowStyle", "Hidden", "-File", scriptPath, "-PairingUrl", pairingURL, "-ConfigPath", configPath)
+	cmd := exec.Command("powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-WindowStyle", "Hidden", "-File", scriptPath, "-PairingUrl", pairingURL, "-ConfigPath", configPath, "-AgentPid", strconv.Itoa(os.Getpid()))
 	cmd.Stdout = nil
 	cmd.Stderr = nil
 	if err := cmd.Start(); err != nil {
@@ -136,6 +139,18 @@ func startTrayHelper(logger *slog.Logger, cfg config.Config, configPath string) 
 		return
 	}
 	_ = cmd.Process.Release()
+}
+
+func cleanupExistingTrayHelpers(logger *slog.Logger, scriptPath string) {
+	if runtime.GOOS != "windows" {
+		return
+	}
+	escapedPath := strings.ReplaceAll(scriptPath, "'", "''")
+	script := fmt.Sprintf(`$target = '%s'; Get-CimInstance Win32_Process -Filter "Name = 'powershell.exe'" | Where-Object { $_.ProcessId -ne $PID -and $_.CommandLine -like "*$target*" } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }`, escapedPath)
+	cmd := exec.Command("powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", script)
+	if err := cmd.Run(); err != nil {
+		logger.Warn("failed to cleanup existing tray helpers", "error", err)
+	}
 }
 
 type trackedWezTerm struct {
@@ -203,6 +218,14 @@ func autoLaunchInstances(ctx context.Context, logger *slog.Logger, weztermClient
 		instance, ok := instances[id]
 		if !ok {
 			logger.Warn("auto launch skipped unknown instance", "instance", id)
+			continue
+		}
+
+		exists, err := instanceHasSessions(ctx, weztermClient, instance.Class)
+		if err != nil {
+			logger.Warn("auto launch session check failed", "instance", id, "class", instance.Class, "error", err)
+		} else if exists {
+			logger.Info("auto launch skipped existing session", "instance", id, "class", instance.Class)
 			continue
 		}
 

@@ -39,7 +39,7 @@ func TestInstanceHasSessions(t *testing.T) {
 	}
 }
 
-func TestAutoLaunchLaunchesEvenWhenSessionExists(t *testing.T) {
+func TestAutoLaunchSkipsWhenSessionExists(t *testing.T) {
 	client := &fakeLaunchListClient{listPayload: json.RawMessage(`[{"pane_id":1}]`)}
 	cfg := config.Config{
 		Root:       `D:\EasyCodex`,
@@ -49,7 +49,7 @@ func TestAutoLaunchLaunchesEvenWhenSessionExists(t *testing.T) {
 
 	autoLaunchInstances(context.Background(), discardLogger(), client, cfg)
 
-	if len(client.launches) != 1 || client.launches[0] != "easycodex" {
+	if len(client.launches) != 0 {
 		t.Fatalf("launches = %#v", client.launches)
 	}
 }
