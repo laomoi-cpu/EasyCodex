@@ -62,6 +62,7 @@ GET  /api/instances
 POST /api/instances/{instanceId}/launch
 GET  /api/instances/{instanceId}/sessions
 GET  /api/instances/{instanceId}/panes/{paneId}/text?lines=200
+GET  /api/instances/{instanceId}/panes/{paneId}/snapshot?lines=120&since=<hash>
 POST /api/instances/{instanceId}/panes/{paneId}/send
 POST /api/instances/{instanceId}/spawn
 ```
@@ -109,6 +110,46 @@ Authorization: Bearer <token>
     "panes": []
   }
 }
+```
+
+APK 推荐使用 snapshot 轮询 pane 内容：
+
+```json
+{
+  "ok": true,
+  "data": {
+    "instance": "main",
+    "paneId": "0",
+    "text": "...",
+    "hash": "2cf24d...",
+    "changed": true,
+    "lineCount": 24,
+    "capturedAt": "2026-05-10T09:50:00+08:00"
+  }
+}
+```
+
+下一次请求带上 `since`：
+
+```http
+GET /api/instances/main/panes/0/snapshot?lines=120&since=2cf24d...
+```
+
+如果文本没有变化，返回不包含 `text`：
+
+```json
+{
+  "ok": true,
+  "data": {
+    "instance": "main",
+    "paneId": "0",
+    "hash": "2cf24d...",
+    "changed": false,
+    "lineCount": 24,
+    "capturedAt": "2026-05-10T09:50:01+08:00"
+  }
+}
+
 ```
 
 发送命令示例：

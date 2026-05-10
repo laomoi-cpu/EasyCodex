@@ -2,7 +2,9 @@ package server
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -113,6 +115,11 @@ type paneSession struct {
 	Size             json.RawMessage `json:"size,omitempty"`
 }
 
+type textQuery struct {
+	Lines   int
+	Escapes bool
+}
+
 func New(cfg config.Config, wezterm WezTerm, logger *slog.Logger) (*Server, error) {
 	if err := config.Validate(cfg); err != nil {
 		return nil, err
@@ -138,6 +145,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/instances/{instanceID}/launch", s.auth(s.launch))
 	mux.HandleFunc("GET /api/instances/{instanceID}/sessions", s.auth(s.sessions))
 	mux.HandleFunc("GET /api/instances/{instanceID}/panes/{paneID}/text", s.auth(s.paneText))
+	mux.HandleFunc("GET /api/instances/{instanceID}/panes/{paneID}/snapshot", s.auth(s.paneSnapshot))
 	mux.HandleFunc("POST /api/instances/{instanceID}/panes/{paneID}/send", s.auth(s.sendText))
 	mux.HandleFunc("POST /api/instances/{instanceID}/spawn", s.auth(s.spawn))
 	return s.logRequests(mux)
@@ -205,18 +213,12 @@ func (s *Server) paneText(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	lines := 200
-	if raw := r.URL.Query().Get("lines"); raw != "" {
-		value, err := strconv.Atoi(raw)
-		if err != nil || value < 1 || value > 5000 {
-			writeError(w, http.StatusBadRequest, errors.New("lines must be between 1 and 5000"))
-			return
-		}
-		lines = value
+	query, ok := parseTextQuery(w, r)
+	if !ok {
+		return
 	}
-	escapes := parseBool(r.URL.Query().Get("escapes"))
 
-	text, err := s.wezterm.GetText(r.Context(), instance.Class, paneID, lines, escapes)
+	text, err := s.wezterm.GetText(r.Context(), instance.Class, paneID, query.Lines, query.Escapes)
 	if err != nil {
 		writeError(w, http.StatusBadGateway, err)
 		return
@@ -226,6 +228,43 @@ func (s *Server) paneText(w http.ResponseWriter, r *http.Request) {
 		"paneId":   paneID,
 		"text":     text,
 	})
+}
+
+func (s *Server) paneSnapshot(w http.ResponseWriter, r *http.Request) {
+	instance, ok := s.instance(w, r)
+	if !ok {
+		return
+	}
+	paneID := r.PathValue("paneID")
+	if !validID(paneID) {
+		writeError(w, http.StatusBadRequest, errors.New("invalid pane id"))
+		return
+	}
+	query, ok := parseTextQuery(w, r)
+	if !ok {
+		return
+	}
+
+	text, err := s.wezterm.GetText(r.Context(), instance.Class, paneID, query.Lines, query.Escapes)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, err)
+		return
+	}
+	hash := hashText(text)
+	since := r.URL.Query().Get("since")
+	changed := since == "" || since != hash
+	data := map[string]any{
+		"instance":   instance.ID,
+		"paneId":     paneID,
+		"hash":       hash,
+		"changed":    changed,
+		"lineCount":  countLines(text),
+		"capturedAt": time.Now().Format(time.RFC3339Nano),
+	}
+	if changed {
+		data["text"] = text
+	}
+	writeOK(w, http.StatusOK, data)
 }
 
 func (s *Server) sendText(w http.ResponseWriter, r *http.Request) {
@@ -391,6 +430,19 @@ func validID(value string) bool {
 	return true
 }
 
+func parseTextQuery(w http.ResponseWriter, r *http.Request) (textQuery, bool) {
+	query := textQuery{Lines: 200, Escapes: parseBool(r.URL.Query().Get("escapes"))}
+	if raw := r.URL.Query().Get("lines"); raw != "" {
+		value, err := strconv.Atoi(raw)
+		if err != nil || value < 1 || value > 5000 {
+			writeError(w, http.StatusBadRequest, errors.New("lines must be between 1 and 5000"))
+			return textQuery{}, false
+		}
+		query.Lines = value
+	}
+	return query, true
+}
+
 func parseBool(value string) bool {
 	switch strings.ToLower(value) {
 	case "1", "true", "yes", "on":
@@ -425,6 +477,18 @@ func sendEnterDelay(value int) time.Duration {
 		value = 2000
 	}
 	return time.Duration(value) * time.Millisecond
+}
+
+func hashText(text string) string {
+	sum := sha256.Sum256([]byte(text))
+	return hex.EncodeToString(sum[:])
+}
+
+func countLines(text string) int {
+	if text == "" {
+		return 0
+	}
+	return strings.Count(text, "\n") + 1
 }
 
 func normalizeSessions(instanceID string, data json.RawMessage) (sessionTree, error) {

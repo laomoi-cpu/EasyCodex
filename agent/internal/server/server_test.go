@@ -219,6 +219,71 @@ func TestPaneTextValidatesLinesAndPaneID(t *testing.T) {
 	}
 }
 
+func TestPaneSnapshotReturnsHashAndTextWhenChanged(t *testing.T) {
+	srv, fake := testServer(t)
+	req := httptest.NewRequest(http.MethodGet, "/api/instances/main/panes/3/snapshot?lines=25&escapes=1", nil)
+	req.Header.Set("Authorization", "Bearer secret")
+	rec := httptest.NewRecorder()
+
+	srv.Handler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d body = %s", rec.Code, rec.Body.String())
+	}
+	if fake.lastPaneID != "3" || fake.lastLines != 25 || !fake.lastEscapes {
+		t.Fatalf("unexpected call: %#v", fake)
+	}
+	var payload struct {
+		OK   bool `json:"ok"`
+		Data struct {
+			PaneID    string `json:"paneId"`
+			Text      string `json:"text"`
+			Hash      string `json:"hash"`
+			Changed   bool   `json:"changed"`
+			LineCount int    `json:"lineCount"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("invalid json: %v", err)
+	}
+	if !payload.OK || payload.Data.PaneID != "3" || payload.Data.Text != "hello" || !payload.Data.Changed {
+		t.Fatalf("unexpected payload: %#v", payload)
+	}
+	if payload.Data.Hash != hashText("hello") {
+		t.Fatalf("hash = %q", payload.Data.Hash)
+	}
+	if payload.Data.LineCount != 1 {
+		t.Fatalf("line count = %d", payload.Data.LineCount)
+	}
+}
+
+func TestPaneSnapshotOmitsTextWhenUnchanged(t *testing.T) {
+	srv, _ := testServer(t)
+	req := httptest.NewRequest(http.MethodGet, "/api/instances/main/panes/3/snapshot?since="+hashText("hello"), nil)
+	req.Header.Set("Authorization", "Bearer secret")
+	rec := httptest.NewRecorder()
+
+	srv.Handler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d body = %s", rec.Code, rec.Body.String())
+	}
+	var payload struct {
+		OK   bool `json:"ok"`
+		Data struct {
+			Text    string `json:"text"`
+			Hash    string `json:"hash"`
+			Changed bool   `json:"changed"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("invalid json: %v", err)
+	}
+	if !payload.OK || payload.Data.Changed || payload.Data.Text != "" || payload.Data.Hash != hashText("hello") {
+		t.Fatalf("unexpected payload: %#v", payload)
+	}
+}
+
 func TestSendText(t *testing.T) {
 	srv, fake := testServer(t)
 	body := bytes.NewBufferString(`{"text":"dir\r","noPaste":true}`)
