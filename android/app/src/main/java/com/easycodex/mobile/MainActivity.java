@@ -1179,12 +1179,12 @@ public class MainActivity extends Activity {
     }
 
     private int[] applySgr(String params, int fg, int bg) {
-        if (params.isEmpty()) {
+        List<Integer> codes = sgrCodes(params);
+        if (codes.isEmpty()) {
             return new int[]{-1, -1};
         }
-        String[] parts = params.split(";");
-        for (int i = 0; i < parts.length; i++) {
-            int code = parseAnsiCode(parts[i], 0);
+        for (int i = 0; i < codes.size(); i++) {
+            int code = codes.get(i);
             if (code == 0) {
                 fg = -1;
                 bg = -1;
@@ -1200,20 +1200,20 @@ public class MainActivity extends Activity {
                 fg = ansiColor(code - 90 + 8);
             } else if (code >= 100 && code <= 107) {
                 bg = ansiColor(code - 100 + 8);
-            } else if ((code == 38 || code == 48) && i + 2 < parts.length) {
+            } else if ((code == 38 || code == 48) && i + 2 < codes.size()) {
                 boolean foreground = code == 38;
-                int mode = parseAnsiCode(parts[++i], -1);
-                if (mode == 5 && i + 1 < parts.length) {
-                    int color = xtermColor(parseAnsiCode(parts[++i], -1));
+                int mode = codes.get(++i);
+                if (mode == 5 && i + 1 < codes.size()) {
+                    int color = xtermColor(codes.get(++i));
                     if (foreground) {
                         fg = color;
                     } else {
                         bg = color;
                     }
-                } else if (mode == 2 && i + 3 < parts.length) {
-                    int r = clampColor(parseAnsiCode(parts[++i], 0));
-                    int g = clampColor(parseAnsiCode(parts[++i], 0));
-                    int b = clampColor(parseAnsiCode(parts[++i], 0));
+                } else if (mode == 2 && i + 3 < codes.size()) {
+                    int r = clampColor(codes.get(++i));
+                    int g = clampColor(codes.get(++i));
+                    int b = clampColor(codes.get(++i));
                     int color = 0xFF000000 | (r << 16) | (g << 8) | b;
                     if (foreground) {
                         fg = color;
@@ -1224,6 +1224,25 @@ public class MainActivity extends Activity {
             }
         }
         return new int[]{fg, bg};
+    }
+
+    private List<Integer> sgrCodes(String params) {
+        List<Integer> codes = new ArrayList<>();
+        if (params.isEmpty()) {
+            return codes;
+        }
+        String[] parts = params.replace(':', ';').split(";");
+        for (String part : parts) {
+            String trimmed = part.trim();
+            if (trimmed.isEmpty()) {
+                continue;
+            }
+            codes.add(parseAnsiCode(trimmed, 0));
+        }
+        if (codes.isEmpty()) {
+            codes.add(0);
+        }
+        return codes;
     }
 
     private int parseAnsiCode(String text, int fallback) {
