@@ -14,6 +14,7 @@ import (
 )
 
 type WezTerm interface {
+	Launch(ctx context.Context, class string) error
 	List(ctx context.Context, class string) (json.RawMessage, error)
 	GetText(ctx context.Context, class, paneID string, lines int, escapes bool) (string, error)
 	SendText(ctx context.Context, class, paneID, text string, noPaste bool) error
@@ -49,6 +50,7 @@ func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/health", s.health)
 	mux.HandleFunc("GET /api/instances", s.auth(s.instancesList))
+	mux.HandleFunc("POST /api/instances/{instanceID}/launch", s.auth(s.launch))
 	mux.HandleFunc("GET /api/instances/{instanceID}/sessions", s.auth(s.sessions))
 	mux.HandleFunc("GET /api/instances/{instanceID}/panes/{paneID}/text", s.auth(s.paneText))
 	mux.HandleFunc("POST /api/instances/{instanceID}/panes/{paneID}/send", s.auth(s.sendText))
@@ -78,6 +80,21 @@ func (s *Server) instancesList(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"instances": items})
+}
+
+func (s *Server) launch(w http.ResponseWriter, r *http.Request) {
+	instance, ok := s.instance(w, r)
+	if !ok {
+		return
+	}
+	if err := s.wezterm.Launch(r.Context(), instance.Class); err != nil {
+		writeError(w, http.StatusBadGateway, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"ok":       true,
+		"instance": instance.ID,
+	})
 }
 
 func (s *Server) sessions(w http.ResponseWriter, r *http.Request) {

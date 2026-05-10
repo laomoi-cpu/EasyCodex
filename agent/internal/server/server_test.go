@@ -18,6 +18,13 @@ type fakeWezTerm struct {
 	lastEscapes bool
 	lastText    string
 	lastNoPaste bool
+	launched    bool
+}
+
+func (fake *fakeWezTerm) Launch(ctx context.Context, class string) error {
+	fake.lastClass = class
+	fake.launched = true
+	return nil
 }
 
 func (fake *fakeWezTerm) List(ctx context.Context, class string) (json.RawMessage, error) {
@@ -101,6 +108,22 @@ func TestSessionsReturnsWezTermPayload(t *testing.T) {
 	}
 	if fake.lastClass != "easyterm" {
 		t.Fatalf("class = %q", fake.lastClass)
+	}
+}
+
+func TestLaunchInstance(t *testing.T) {
+	srv, fake := testServer(t)
+	req := httptest.NewRequest(http.MethodPost, "/api/instances/main/launch", nil)
+	req.Header.Set("Authorization", "Bearer secret")
+	rec := httptest.NewRecorder()
+
+	srv.Handler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d body = %s", rec.Code, rec.Body.String())
+	}
+	if !fake.launched || fake.lastClass != "easyterm" {
+		t.Fatalf("unexpected launch: %#v", fake)
 	}
 }
 

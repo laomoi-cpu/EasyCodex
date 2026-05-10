@@ -80,6 +80,28 @@ func (cli CLI) Spawn(ctx context.Context, class, cwd string, newWindow bool, com
 	return strings.TrimSpace(string(stdout)), nil
 }
 
+func (cli CLI) Launch(ctx context.Context, class string) error {
+	if class == "" {
+		return errors.New("class is required")
+	}
+	root, err := filepath.Abs(cli.Root)
+	if err != nil {
+		return err
+	}
+	guiPath := filepath.Join(root, "bin", "wezterm-gui.exe")
+	if _, err := os.Stat(guiPath); err != nil {
+		return fmt.Errorf("wezterm gui executable not found: %w", err)
+	}
+
+	cmd := exec.CommandContext(ctx, guiPath, "start", "--class", class)
+	cmd.Dir = root
+	cmd.Env = append(os.Environ(), "WEZTERM_CONFIG_FILE="+filepath.Join(root, "wezterm-config", "wezterm.lua"))
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+	return cmd.Process.Release()
+}
+
 func (cli CLI) run(ctx context.Context, class string, stdin *strings.Reader, args ...string) ([]byte, error) {
 	if class == "" {
 		return nil, errors.New("class is required")

@@ -21,6 +21,7 @@ http://127.0.0.1:8765
 ```http
 GET  /api/health
 GET  /api/instances
+POST /api/instances/{instanceId}/launch
 GET  /api/instances/{instanceId}/sessions
 GET  /api/instances/{instanceId}/panes/{paneId}/text?lines=200
 POST /api/instances/{instanceId}/panes/{paneId}/send
@@ -40,3 +41,17 @@ Authorization: Bearer <token>
   "text": "dir\r"
 }
 ```
+
+启动实例：
+
+```http
+POST /api/instances/main/launch
+```
+
+Agent 会启动：
+
+```cmd
+bin\wezterm-gui.exe start --class easyterm
+```
+
+并自动设置 `WEZTERM_CONFIG_FILE` 指向 `wezterm-config\wezterm.lua`。
