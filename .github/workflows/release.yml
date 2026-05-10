@@ -1,6 +1,9 @@
 name: Build Release
 
 on:
+  push:
+    tags:
+      - "v*.*.*"
   workflow_dispatch:
     inputs:
       version:
@@ -40,12 +43,22 @@ jobs:
         with:
           gradle-version: "6.7.1"
 
+      - name: Resolve version
+        id: version
+        shell: pwsh
+        run: |
+          $version = "${{ github.event.inputs.version }}"
+          if ([string]::IsNullOrWhiteSpace($version)) {
+            $version = "${{ github.ref_name }}" -replace '^v', ''
+          }
+          "version=$version" >> $env:GITHUB_OUTPUT
+
       - name: Build package
         shell: pwsh
-        run: .\scripts\build-release.ps1 -Version "${{ inputs.version }}"
+        run: .\scripts\build-release.ps1 -Version "${{ steps.version.outputs.version }}"
 
       - name: Upload package
         uses: actions/upload-artifact@v4
         with:
-          name: EasyCodex-${{ inputs.version }}
-          path: ${{ inputs.version }}/**
+          name: EasyCodex-${{ steps.version.outputs.version }}
+          path: ${{ steps.version.outputs.version }}/**
