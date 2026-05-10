@@ -1,0 +1,51 @@
+name: Build Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version, for example 0.0.1"
+        required: true
+        default: "0.0.1"
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: agent/go.mod
+          cache-dependency-path: agent/go.mod
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "11"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android packages
+        shell: pwsh
+        run: sdkmanager "platform-tools" "platforms;android-30" "build-tools;30.0.2"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "6.7.1"
+
+      - name: Build package
+        shell: pwsh
+        run: .\scripts\build-release.ps1 -Version "${{ inputs.version }}"
+
+      - name: Upload package
+        uses: actions/upload-artifact@v4
+        with:
+          name: EasyCodex-${{ inputs.version }}
+          path: ${{ inputs.version }}/**
