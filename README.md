@@ -10,6 +10,8 @@ Start the PC Agent:
 D:\EasyTerm\agent\bin\easyterm-agent.exe
 ```
 
+The Agent automatically launches the default WezTerm instance after startup.
+
 Default address:
 
 ```text
@@ -22,12 +24,12 @@ the default instance:
 ```json
 {
   "id": "main",
-  "name": "主终端",
+  "name": "main",
   "class": "easyterm"
 }
 ```
 
-Launch the configured WezTerm instance through the Agent:
+You can also launch a configured WezTerm instance through the Agent:
 
 ```http
 POST /api/instances/main/launch

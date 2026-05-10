@@ -20,6 +20,9 @@ func TestLoadMissingUsesDefaultsAndRuntimeToken(t *testing.T) {
 	if cfg.Token == "" {
 		t.Fatalf("expected generated token")
 	}
+	if len(cfg.AutoLaunch) != 1 || cfg.AutoLaunch[0] != "main" {
+		t.Fatalf("unexpected auto launch: %#v", cfg.AutoLaunch)
+	}
 	if len(cfg.Instances) != 1 || cfg.Instances[0].Class != "easyterm" {
 		t.Fatalf("unexpected instances: %#v", cfg.Instances)
 	}
@@ -33,6 +36,7 @@ func TestLoadConfigFile(t *testing.T) {
 		"root": "D:\\EasyTerm",
 		"token": "secret",
 		"commandTimeoutSeconds": 9,
+		"autoLaunch": [],
 		"instances": [{"id": "work", "name": "工作", "class": "easyterm-work"}]
 	}`
 	if err := os.WriteFile(path, []byte(data), 0600); err != nil {
@@ -49,8 +53,33 @@ func TestLoadConfigFile(t *testing.T) {
 	if cfg.Token != "secret" || cfg.CommandTimeoutSeconds != 9 {
 		t.Fatalf("unexpected config: %#v", cfg)
 	}
+	if len(cfg.AutoLaunch) != 0 {
+		t.Fatalf("unexpected auto launch: %#v", cfg.AutoLaunch)
+	}
 	if cfg.Instances[0].ID != "work" {
 		t.Fatalf("unexpected instance: %#v", cfg.Instances[0])
+	}
+}
+
+func TestLoadConfigFileWithUTF8BOM(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+	data := append([]byte{0xEF, 0xBB, 0xBF}, []byte(`{
+		"listen": "127.0.0.1:8765",
+		"root": "D:\\EasyTerm",
+		"token": "secret",
+		"instances": [{"id": "main", "name": "main", "class": "easyterm"}]
+	}`)...)
+	if err := os.WriteFile(path, data, 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, found, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+	if !found || cfg.Token != "secret" {
+		t.Fatalf("unexpected config: found=%v cfg=%#v", found, cfg)
 	}
 }
 
@@ -62,5 +91,13 @@ func TestValidateRejectsDuplicateIDs(t *testing.T) {
 	}
 	if err := Validate(cfg); err == nil {
 		t.Fatalf("expected duplicate id error")
+	}
+}
+
+func TestValidateRejectsUnknownAutoLaunch(t *testing.T) {
+	cfg := Defaults()
+	cfg.AutoLaunch = []string{"missing"}
+	if err := Validate(cfg); err == nil {
+		t.Fatalf("expected unknown auto launch error")
 	}
 }

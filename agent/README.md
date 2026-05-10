@@ -16,6 +16,14 @@ http://127.0.0.1:8765
 
 如果 `agent\config.json` 不存在，Agent 会使用内置默认配置，并在启动时生成一个临时 token。
 
+默认配置会自动启动 `main` 实例。要关闭自动启动，在 `agent\config.json` 中设置：
+
+```json
+{
+  "autoLaunch": []
+}
+```
+
 ## API
 
 ```http

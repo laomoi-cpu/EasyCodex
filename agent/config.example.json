@@ -3,10 +3,11 @@
   "root": "D:\\EasyTerm",
   "token": "",
   "commandTimeoutSeconds": 5,
+  "autoLaunch": ["main"],
   "instances": [
     {
       "id": "main",
-      "name": "主终端",
+      "name": "main",
       "class": "easyterm"
     }
   ]

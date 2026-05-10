@@ -1,6 +1,7 @@
 package config
 
 import (
+	"bytes"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
@@ -22,6 +23,7 @@ type Config struct {
 	Root                  string     `json:"root"`
 	Token                 string     `json:"token"`
 	CommandTimeoutSeconds int        `json:"commandTimeoutSeconds"`
+	AutoLaunch            []string   `json:"autoLaunch"`
 	Instances             []Instance `json:"instances"`
 }
 
@@ -52,6 +54,7 @@ func Load(path string) (Config, bool, error) {
 		return Config{}, false, err
 	}
 
+	data = bytes.TrimPrefix(data, []byte{0xEF, 0xBB, 0xBF})
 	if err := json.Unmarshal(data, &cfg); err != nil {
 		return Config{}, true, err
 	}
@@ -79,8 +82,9 @@ func Defaults() Config {
 		Listen:                DefaultListen,
 		Root:                  root,
 		CommandTimeoutSeconds: int(DefaultCommandTimeout / time.Second),
+		AutoLaunch:            []string{"main"},
 		Instances: []Instance{
-			{ID: "main", Name: "主终端", Class: "easyterm"},
+			{ID: "main", Name: "main", Class: "easyterm"},
 		},
 	}
 	Normalize(&cfg)
@@ -91,6 +95,9 @@ func Normalize(cfg *Config) {
 	cfg.Listen = strings.TrimSpace(cfg.Listen)
 	cfg.Root = strings.TrimSpace(cfg.Root)
 	cfg.Token = strings.TrimSpace(cfg.Token)
+	for i := range cfg.AutoLaunch {
+		cfg.AutoLaunch[i] = strings.TrimSpace(cfg.AutoLaunch[i])
+	}
 	for i := range cfg.Instances {
 		cfg.Instances[i].ID = strings.TrimSpace(cfg.Instances[i].ID)
 		cfg.Instances[i].Name = strings.TrimSpace(cfg.Instances[i].Name)
@@ -125,6 +132,14 @@ func Validate(cfg Config) error {
 		}
 		seen[instance.ID] = struct{}{}
 	}
+	for _, id := range cfg.AutoLaunch {
+		if id == "" {
+			continue
+		}
+		if _, ok := seen[id]; !ok {
+			return fmt.Errorf("auto launch instance %q is not configured", id)
+		}
+	}
 	return nil
 }
 
@@ -155,7 +170,7 @@ func inferRoot() string {
 	for _, start := range candidates {
 		dir := start
 		for {
-			if _, err := os.Stat(filepath.Join(dir, "easyterm-cli.cmd")); err == nil {
+			if _, err := os.Stat(filepath.Join(dir, "bin", "wezterm.exe")); err == nil {
 				return dir
 			}
 			parent := filepath.Dir(dir)

@@ -19,16 +19,16 @@ import (
 )
 
 func main() {
-	configPath := flag.String("config", filepath.Join("agent", "config.json"), "配置文件路径")
-	listenOverride := flag.String("listen", "", "覆盖监听地址，例如 127.0.0.1:8765")
-	tokenOverride := flag.String("token", "", "覆盖 API token")
+	configPath := flag.String("config", filepath.Join("agent", "config.json"), "config file path")
+	listenOverride := flag.String("listen", "", "override listen address, for example 127.0.0.1:8765")
+	tokenOverride := flag.String("token", "", "override API token")
 	flag.Parse()
 
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
 
 	cfg, found, err := config.Load(*configPath)
 	if err != nil {
-		logger.Error("加载配置失败", "error", err)
+		logger.Error("failed to load config", "error", err)
 		os.Exit(1)
 	}
 	if *listenOverride != "" {
@@ -39,14 +39,14 @@ func main() {
 	}
 	config.Normalize(&cfg)
 	if err := config.Validate(cfg); err != nil {
-		logger.Error("配置无效", "error", err)
+		logger.Error("invalid config", "error", err)
 		os.Exit(1)
 	}
 
 	cli := wezterm.CLI{Root: cfg.Root, Timeout: cfg.CommandTimeout()}
 	app, err := server.New(cfg, cli, logger)
 	if err != nil {
-		logger.Error("创建服务失败", "error", err)
+		logger.Error("failed to create server", "error", err)
 		os.Exit(1)
 	}
 
@@ -71,6 +71,7 @@ func main() {
 	for _, instance := range cfg.Instances {
 		fmt.Printf("Instance: %s (%s) class=%s\n", instance.ID, instance.Name, instance.Class)
 	}
+	autoLaunchInstances(context.Background(), logger, cli, cfg)
 
 	errCh := make(chan error, 1)
 	go func() {
@@ -83,17 +84,40 @@ func main() {
 	select {
 	case err := <-errCh:
 		if err != nil && err != http.ErrServerClosed {
-			logger.Error("服务异常退出", "error", err)
+			logger.Error("server exited unexpectedly", "error", err)
 			os.Exit(1)
 		}
 	case <-stop:
-		logger.Info("正在停止服务")
+		logger.Info("stopping server")
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		if err := httpServer.Shutdown(ctx); err != nil {
-			logger.Error("停止服务失败", "error", err)
+			logger.Error("failed to stop server", "error", err)
 			os.Exit(1)
 		}
+	}
+}
+
+func autoLaunchInstances(ctx context.Context, logger *slog.Logger, cli wezterm.CLI, cfg config.Config) {
+	instances := make(map[string]config.Instance, len(cfg.Instances))
+	for _, instance := range cfg.Instances {
+		instances[instance.ID] = instance
+	}
+
+	for _, id := range cfg.AutoLaunch {
+		if id == "" {
+			continue
+		}
+		instance, ok := instances[id]
+		if !ok {
+			logger.Warn("auto launch skipped unknown instance", "instance", id)
+			continue
+		}
+		if err := cli.Launch(ctx, instance.Class); err != nil {
+			logger.Error("auto launch failed", "instance", id, "class", instance.Class, "error", err)
+			continue
+		}
+		logger.Info("auto launched instance", "instance", id, "class", instance.Class)
 	}
 }
 
