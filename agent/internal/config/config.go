@@ -1,0 +1,169 @@
+package config
+
+import (
+	"crypto/rand"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+	"time"
+)
+
+const (
+	DefaultListen         = "127.0.0.1:8765"
+	DefaultCommandTimeout = 5 * time.Second
+)
+
+type Config struct {
+	Listen                string     `json:"listen"`
+	Root                  string     `json:"root"`
+	Token                 string     `json:"token"`
+	CommandTimeoutSeconds int        `json:"commandTimeoutSeconds"`
+	Instances             []Instance `json:"instances"`
+}
+
+type Instance struct {
+	ID    string `json:"id"`
+	Name  string `json:"name"`
+	Class string `json:"class"`
+}
+
+func Load(path string) (Config, bool, error) {
+	if path == "" {
+		path = filepath.Join("agent", "config.json")
+	}
+
+	cfg := Defaults()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			if cfg.Token == "" {
+				token, tokenErr := GenerateToken()
+				if tokenErr != nil {
+					return Config{}, false, tokenErr
+				}
+				cfg.Token = token
+			}
+			return cfg, false, nil
+		}
+		return Config{}, false, err
+	}
+
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		return Config{}, true, err
+	}
+	Normalize(&cfg)
+	if err := Validate(cfg); err != nil {
+		return Config{}, true, err
+	}
+	if cfg.Token == "" {
+		token, tokenErr := GenerateToken()
+		if tokenErr != nil {
+			return Config{}, true, tokenErr
+		}
+		cfg.Token = token
+	}
+	return cfg, true, nil
+}
+
+func Defaults() Config {
+	root := os.Getenv("EASYTERM_ROOT")
+	if root == "" {
+		root = inferRoot()
+	}
+
+	cfg := Config{
+		Listen:                DefaultListen,
+		Root:                  root,
+		CommandTimeoutSeconds: int(DefaultCommandTimeout / time.Second),
+		Instances: []Instance{
+			{ID: "main", Name: "主终端", Class: "easyterm"},
+		},
+	}
+	Normalize(&cfg)
+	return cfg
+}
+
+func Normalize(cfg *Config) {
+	cfg.Listen = strings.TrimSpace(cfg.Listen)
+	cfg.Root = strings.TrimSpace(cfg.Root)
+	cfg.Token = strings.TrimSpace(cfg.Token)
+	for i := range cfg.Instances {
+		cfg.Instances[i].ID = strings.TrimSpace(cfg.Instances[i].ID)
+		cfg.Instances[i].Name = strings.TrimSpace(cfg.Instances[i].Name)
+		cfg.Instances[i].Class = strings.TrimSpace(cfg.Instances[i].Class)
+	}
+	if cfg.Listen == "" {
+		cfg.Listen = DefaultListen
+	}
+	if cfg.CommandTimeoutSeconds <= 0 {
+		cfg.CommandTimeoutSeconds = int(DefaultCommandTimeout / time.Second)
+	}
+}
+
+func Validate(cfg Config) error {
+	if cfg.Root == "" {
+		return errors.New("root is required")
+	}
+	if len(cfg.Instances) == 0 {
+		return errors.New("at least one instance is required")
+	}
+
+	seen := make(map[string]struct{}, len(cfg.Instances))
+	for _, instance := range cfg.Instances {
+		if instance.ID == "" {
+			return errors.New("instance id is required")
+		}
+		if instance.Class == "" {
+			return fmt.Errorf("instance %q class is required", instance.ID)
+		}
+		if _, ok := seen[instance.ID]; ok {
+			return fmt.Errorf("duplicate instance id %q", instance.ID)
+		}
+		seen[instance.ID] = struct{}{}
+	}
+	return nil
+}
+
+func (cfg Config) CommandTimeout() time.Duration {
+	if cfg.CommandTimeoutSeconds <= 0 {
+		return DefaultCommandTimeout
+	}
+	return time.Duration(cfg.CommandTimeoutSeconds) * time.Second
+}
+
+func GenerateToken() (string, error) {
+	var data [16]byte
+	if _, err := rand.Read(data[:]); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(data[:]), nil
+}
+
+func inferRoot() string {
+	candidates := []string{}
+	if wd, err := os.Getwd(); err == nil {
+		candidates = append(candidates, wd)
+	}
+	if exe, err := os.Executable(); err == nil {
+		candidates = append(candidates, filepath.Dir(exe))
+	}
+
+	for _, start := range candidates {
+		dir := start
+		for {
+			if _, err := os.Stat(filepath.Join(dir, "easyterm-cli.cmd")); err == nil {
+				return dir
+			}
+			parent := filepath.Dir(dir)
+			if parent == dir {
+				break
+			}
+			dir = parent
+		}
+	}
+	return "."
+}

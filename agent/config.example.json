@@ -1,0 +1,13 @@
+{
+  "listen": "127.0.0.1:8765",
+  "root": "D:\\EasyTerm",
+  "token": "",
+  "commandTimeoutSeconds": 5,
+  "instances": [
+    {
+      "id": "main",
+      "name": "主终端",
+      "class": "easyterm"
+    }
+  ]
+}

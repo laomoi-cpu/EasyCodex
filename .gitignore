@@ -1,0 +1,13 @@
+captures/
+.downloads/
+.gocache/
+.gotelemetry/
+tools/
+agent/bin/
+agent/dist/
+agent/*.exe
+*.log
+*.tmp
+*.cache
+Thumbs.db
+desktop.ini
