@@ -4,6 +4,7 @@
   "token": "easycodex-dev-token",
   "commandTimeoutSeconds": 5,
   "autoLaunch": ["main"],
+  "closeLaunchedGuiOnExit": false,
   "instances": [
     {
       "id": "main",

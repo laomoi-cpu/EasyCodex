@@ -11,6 +11,7 @@ D:\EasyCodex\agent\bin\easycodex-agent.exe
 ```
 
 The Agent automatically launches the default WezTerm instance after startup.
+If that instance already has sessions, the Agent skips launching a duplicate window.
 
 Default address:
 

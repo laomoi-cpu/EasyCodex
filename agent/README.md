@@ -24,6 +24,18 @@ http://127.0.0.1:8765
 }
 ```
 
+Agent 自动启动前会先检查对应 WezTerm class 是否已有会话；已有会话时不会重复启动新窗口。
+
+默认情况下，关闭 Agent 不会关闭 WezTerm GUI，避免误杀正在使用的终端。测试或托管模式可以开启：
+
+```json
+{
+  "closeLaunchedGuiOnExit": true
+}
+```
+
+该选项只尝试关闭本次 Agent 启动后记录到的 GUI 进程。
+
 ## API
 
 ```http
@@ -46,9 +58,21 @@ Authorization: Bearer <token>
 
 ```json
 {
-  "text": "dir\r"
+  "text": "dir",
+  "enter": true
 }
 ```
+
+`enter: true` 会把回车作为独立按键发送，适合 Codex 这类 TUI 程序。需要发送中文时，推荐传 UTF-8 base64，避免 Windows 客户端编码差异：
+
+```json
+{
+  "textBase64": "5YiG5p6Q6aG555uu55uu5b2V",
+  "enter": true
+}
+```
+
+默认会在发送文本后等待 100ms 再发送回车，避免 TUI 程序还没处理完输入。可以用 `enterDelayMillis` 覆盖，最大 2000ms。
 
 启动实例：
 

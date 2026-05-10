@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -9,12 +10,13 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"easycodex-agent/internal/config"
 )
 
 type WezTerm interface {
-	Launch(ctx context.Context, class string) error
+	Launch(ctx context.Context, class string) (int, error)
 	List(ctx context.Context, class string) (json.RawMessage, error)
 	GetText(ctx context.Context, class, paneID string, lines int, escapes bool) (string, error)
 	SendText(ctx context.Context, class, paneID, text string, noPaste bool) error
@@ -26,6 +28,14 @@ type Server struct {
 	wezterm   WezTerm
 	instances map[string]config.Instance
 	logger    *slog.Logger
+}
+
+type sendTextRequest struct {
+	Text             string `json:"text"`
+	TextBase64       string `json:"textBase64"`
+	NoPaste          bool   `json:"noPaste"`
+	Enter            bool   `json:"enter"`
+	EnterDelayMillis int    `json:"enterDelayMillis"`
 }
 
 func New(cfg config.Config, wezterm WezTerm, logger *slog.Logger) (*Server, error) {
@@ -87,13 +97,15 @@ func (s *Server) launch(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if err := s.wezterm.Launch(r.Context(), instance.Class); err != nil {
+	pid, err := s.wezterm.Launch(r.Context(), instance.Class)
+	if err != nil {
 		writeError(w, http.StatusBadGateway, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"ok":       true,
 		"instance": instance.ID,
+		"pid":      pid,
 	})
 }
 
@@ -164,22 +176,38 @@ func (s *Server) sendText(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var body struct {
-		Text    string `json:"text"`
-		NoPaste bool   `json:"noPaste"`
-	}
+	var body sendTextRequest
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
-	if body.Text == "" {
+	text, err := decodeSendText(body)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	if text == "" && !body.Enter {
 		writeError(w, http.StatusBadRequest, errors.New("text is required"))
 		return
 	}
 
-	if err := s.wezterm.SendText(r.Context(), instance.Class, paneID, body.Text, body.NoPaste); err != nil {
-		writeError(w, http.StatusBadGateway, err)
-		return
+	if body.Enter {
+		text = strings.TrimRight(text, "\r\n")
+	}
+	if text != "" {
+		if err := s.wezterm.SendText(r.Context(), instance.Class, paneID, text, body.NoPaste); err != nil {
+			writeError(w, http.StatusBadGateway, err)
+			return
+		}
+	}
+	if body.Enter {
+		if text != "" {
+			time.Sleep(sendEnterDelay(body.EnterDelayMillis))
+		}
+		if err := s.wezterm.SendText(r.Context(), instance.Class, paneID, "\r", true); err != nil {
+			writeError(w, http.StatusBadGateway, err)
+			return
+		}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
@@ -277,4 +305,31 @@ func parseBool(value string) bool {
 	default:
 		return false
 	}
+}
+
+func decodeSendText(body sendTextRequest) (string, error) {
+	if body.Text != "" && body.TextBase64 != "" {
+		return "", errors.New("text and textBase64 cannot both be set")
+	}
+	if body.TextBase64 == "" {
+		return body.Text, nil
+	}
+	data, err := base64.StdEncoding.DecodeString(body.TextBase64)
+	if err != nil {
+		return "", fmt.Errorf("invalid textBase64: %w", err)
+	}
+	return string(data), nil
+}
+
+func sendEnterDelay(value int) time.Duration {
+	if value < 0 {
+		return 0
+	}
+	if value == 0 {
+		return 100 * time.Millisecond
+	}
+	if value > 2000 {
+		value = 2000
+	}
+	return time.Duration(value) * time.Millisecond
 }

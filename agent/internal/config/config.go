@@ -19,12 +19,13 @@ const (
 )
 
 type Config struct {
-	Listen                string     `json:"listen"`
-	Root                  string     `json:"root"`
-	Token                 string     `json:"token"`
-	CommandTimeoutSeconds int        `json:"commandTimeoutSeconds"`
-	AutoLaunch            []string   `json:"autoLaunch"`
-	Instances             []Instance `json:"instances"`
+	Listen                 string     `json:"listen"`
+	Root                   string     `json:"root"`
+	Token                  string     `json:"token"`
+	CommandTimeoutSeconds  int        `json:"commandTimeoutSeconds"`
+	AutoLaunch             []string   `json:"autoLaunch"`
+	CloseLaunchedGUIOnExit bool       `json:"closeLaunchedGuiOnExit"`
+	Instances              []Instance `json:"instances"`
 }
 
 type Instance struct {

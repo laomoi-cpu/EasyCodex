@@ -80,17 +80,17 @@ func (cli CLI) Spawn(ctx context.Context, class, cwd string, newWindow bool, com
 	return strings.TrimSpace(string(stdout)), nil
 }
 
-func (cli CLI) Launch(ctx context.Context, class string) error {
+func (cli CLI) Launch(ctx context.Context, class string) (int, error) {
 	if class == "" {
-		return errors.New("class is required")
+		return 0, errors.New("class is required")
 	}
 	root, err := filepath.Abs(cli.Root)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	guiPath := filepath.Join(root, "bin", "wezterm-gui.exe")
 	if _, err := os.Stat(guiPath); err != nil {
-		return fmt.Errorf("wezterm gui executable not found: %w", err)
+		return 0, fmt.Errorf("wezterm gui executable not found: %w", err)
 	}
 
 	cmd := exec.CommandContext(ctx, guiPath, "start", "--class", class)
@@ -101,9 +101,13 @@ func (cli CLI) Launch(ctx context.Context, class string) error {
 		"EASYCODEX_ROOT="+root,
 	)
 	if err := cmd.Start(); err != nil {
-		return err
+		return 0, err
 	}
-	return cmd.Process.Release()
+	pid := cmd.Process.Pid
+	if err := cmd.Process.Release(); err != nil {
+		return 0, err
+	}
+	return pid, nil
 }
 
 func (cli CLI) run(ctx context.Context, class string, stdin *strings.Reader, args ...string) ([]byte, error) {
