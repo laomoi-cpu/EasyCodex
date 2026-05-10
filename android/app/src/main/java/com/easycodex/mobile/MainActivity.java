@@ -1,13 +1,16 @@
 package com.easycodex.mobile;
 
+import android.Manifest;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.content.pm.PackageManager;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -27,6 +30,9 @@ import android.widget.TextView;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
+import com.google.zxing.integration.android.IntentIntegrator;
+import com.google.zxing.integration.android.IntentResult;
+
 import java.io.BufferedReader;
 import java.io.InputStream;
 import java.io.InputStreamReader;
@@ -40,6 +46,8 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 public class MainActivity extends Activity {
+    private static final int REQUEST_CAMERA_SCAN = 41;
+
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private final Handler main = new Handler(Looper.getMainLooper());
     private final List<PaneInfo> panes = new ArrayList<>();
@@ -86,6 +94,33 @@ public class MainActivity extends Activity {
         setIntent(intent);
         handlePairingIntent(intent);
         handleAutomationIntent(intent);
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        IntentResult result = IntentIntegrator.parseActivityResult(requestCode, resultCode, data);
+        if (result != null) {
+            String contents = result.getContents();
+            if (contents == null || contents.trim().isEmpty()) {
+                setStatus("Scan cancelled");
+            } else {
+                handleScannedPairing(contents.trim());
+            }
+            return;
+        }
+        super.onActivityResult(requestCode, resultCode, data);
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == REQUEST_CAMERA_SCAN) {
+            if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                launchQrScanner();
+            } else {
+                setStatus("Camera denied");
+            }
+        }
     }
 
     @Override
@@ -158,7 +193,6 @@ public class MainActivity extends Activity {
         keyRowTwo.setGravity(Gravity.CENTER_VERTICAL);
         Button enterOnly = compactButton("Enter");
         Button ctrlC = compactButton("Ctrl+C");
-        Button tab = compactButton("Tab");
         Button shiftTab = compactButton("S+Tab");
         Button space = compactButton("Space");
         Button up = compactButton("↑");
@@ -167,7 +201,6 @@ public class MainActivity extends Activity {
         Button clearText = compactButton("Clear");
         keyRowOne.addView(enterOnly, rowWeightParams(1, -1, 0, dp(5)));
         keyRowOne.addView(ctrlC, rowWeightParams(1, -1, 0, dp(5)));
-        keyRowOne.addView(tab, rowWeightParams(1, -1, 0, dp(5)));
         keyRowOne.addView(shiftTab, rowWeightParams(1, -1, 0, dp(5)));
         keyRowOne.addView(space, rowWeightParams(1, -1, 0, 0));
         keyRowTwo.addView(up, rowWeightParams(1, -1, 0, dp(5)));
@@ -200,7 +233,6 @@ public class MainActivity extends Activity {
         moreKeys.setOnClickListener(v -> toggleKeyPanel());
         enterOnly.setOnClickListener(v -> sendRaw("", true));
         ctrlC.setOnClickListener(v -> sendRaw("\u0003", false));
-        tab.setOnClickListener(v -> sendRaw("\t", false));
         shiftTab.setOnClickListener(v -> sendRaw("\u001B[Z", false));
         space.setOnClickListener(v -> sendRaw(" ", false));
         up.setOnClickListener(v -> sendRaw("\u001B[A", false));
@@ -228,30 +260,86 @@ public class MainActivity extends Activity {
     }
 
     private void showSettingsDialog() {
-        LinearLayout form = new LinearLayout(this);
-        form.setOrientation(LinearLayout.VERTICAL);
-        form.setPadding(dp(8), dp(6), dp(8), 0);
+        LinearLayout panel = new LinearLayout(this);
+        panel.setOrientation(LinearLayout.VERTICAL);
+        panel.setPadding(dp(18), dp(16), dp(18), dp(14));
+        panel.setBackground(rounded(0xFFFFFFFF, dp(12), 0));
+
+        TextView title = new TextView(this);
+        title.setText("服务器连接");
+        title.setTextSize(18);
+        title.setTypeface(Typeface.DEFAULT_BOLD);
+        title.setTextColor(0xFF111827);
+        panel.addView(title, matchWrap());
+
+        TextView hint = smallLabel("扫码 PC 配对二维码，或手动修改 Agent 地址和 Token。");
+        hint.setSingleLine(false);
+        hint.setPadding(0, dp(4), 0, dp(12));
+        panel.addView(hint, matchWrap());
 
         EditText urlField = input("Agent URL", baseUrl);
         EditText tokenField = input("Token", token);
-        form.addView(urlField, matchWrap());
-        form.addView(tokenField, matchWrap());
+        panel.addView(fieldLabel("Agent 地址"), matchWrap());
+        panel.addView(urlField, fixedHeight(dp(44)));
+        panel.addView(fieldSpacer(), fixedHeight(dp(10)));
+        panel.addView(fieldLabel("配对 Token"), matchWrap());
+        panel.addView(tokenField, fixedHeight(dp(44)));
 
-        new AlertDialog.Builder(this)
-                .setTitle("Server Settings")
-                .setView(form)
-                .setPositiveButton("Save", (dialog, which) -> {
-                    baseUrlInput.setText(urlField.getText().toString());
-                    tokenInput.setText(tokenField.getText().toString());
-                    saveConnection();
-                })
-                .setNeutralButton("Connect", (dialog, which) -> {
-                    baseUrlInput.setText(urlField.getText().toString());
-                    tokenInput.setText(tokenField.getText().toString());
-                    connect();
-                })
-                .setNegativeButton("Cancel", null)
-                .show();
+        LinearLayout actions = new LinearLayout(this);
+        actions.setOrientation(LinearLayout.HORIZONTAL);
+        actions.setGravity(Gravity.CENTER_VERTICAL);
+        actions.setPadding(0, dp(16), 0, 0);
+        Button scanButton = compactButton("扫码");
+        Button saveButton = compactButton("保存");
+        Button connectButton = button("连接");
+        actions.addView(scanButton, rowWeightParams(1, dp(42), 0, dp(6)));
+        actions.addView(saveButton, rowWeightParams(1, dp(42), 0, dp(6)));
+        actions.addView(connectButton, rowWeightParams(1, dp(42), 0, 0));
+        panel.addView(actions, matchWrap());
+
+        AlertDialog dialog = new AlertDialog.Builder(this).create();
+        dialog.setView(panel);
+        scanButton.setOnClickListener(v -> {
+            dialog.dismiss();
+            startQrScan();
+        });
+        saveButton.setOnClickListener(v -> {
+            applyConnectionFields(urlField, tokenField);
+            saveConnection();
+            dialog.dismiss();
+        });
+        connectButton.setOnClickListener(v -> {
+            applyConnectionFields(urlField, tokenField);
+            connect();
+            dialog.dismiss();
+        });
+        dialog.show();
+    }
+
+    private void applyConnectionFields(EditText urlField, EditText tokenField) {
+        baseUrlInput.setText(urlField.getText().toString());
+        tokenInput.setText(tokenField.getText().toString());
+    }
+
+    private void startQrScan() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{Manifest.permission.CAMERA}, REQUEST_CAMERA_SCAN);
+            return;
+        }
+        launchQrScanner();
+    }
+
+    private void launchQrScanner() {
+        IntentIntegrator integrator = new IntentIntegrator(this);
+        integrator.setCaptureActivity(EasyCodexCaptureActivity.class);
+        integrator.setDesiredBarcodeFormats(IntentIntegrator.QR_CODE);
+        integrator.setPrompt("扫描 EasyCodex 配对二维码");
+        integrator.setBeepEnabled(false);
+        integrator.setOrientationLocked(false);
+        Intent intent = integrator.createScanIntent();
+        intent.removeFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP);
+        intent.removeFlags(Intent.FLAG_ACTIVITY_CLEAR_WHEN_TASK_RESET);
+        startActivityForResult(intent, IntentIntegrator.REQUEST_CODE);
     }
 
     private void toggleKeyPanel() {
@@ -511,9 +599,12 @@ public class MainActivity extends Activity {
         if (intent == null || intent.getData() == null) {
             return;
         }
-        Uri uri = intent.getData();
+        handlePairingUri(intent.getData());
+    }
+
+    private boolean handlePairingUri(Uri uri) {
         if (!"easycodex".equals(uri.getScheme()) || !"pair".equals(uri.getHost())) {
-            return;
+            return false;
         }
         String pairUrl = uri.getQueryParameter("url");
         if (pairUrl == null || pairUrl.isEmpty()) {
@@ -529,17 +620,44 @@ public class MainActivity extends Activity {
                 applyPairingPayload(result.data);
                 connect();
             });
-            return;
+            return true;
         }
         String data = uri.getQueryParameter("data");
         if (data == null || data.isEmpty()) {
             setStatus("Pairing failed: missing data");
-            return;
+            return true;
         }
         try {
             String json = new String(Base64.decode(data, Base64.DEFAULT), StandardCharsets.UTF_8);
             applyPairingPayload(new JSONObject(json));
             connect();
+        } catch (Exception ex) {
+            setStatus("Pairing failed: " + ex.getMessage());
+        }
+        return true;
+    }
+
+    private void handleScannedPairing(String contents) {
+        try {
+            Uri uri = Uri.parse(contents);
+            if (handlePairingUri(uri)) {
+                return;
+            }
+            String scheme = uri.getScheme();
+            String path = uri.getPath();
+            if (("http".equals(scheme) || "https".equals(scheme)) && path != null && path.contains("/api/mobile-pair")) {
+                setStatus("Pairing from QR...");
+                requestAbsolute(contents, result -> {
+                    if (!result.ok) {
+                        setStatus("Pairing failed: " + result.error);
+                        return;
+                    }
+                    applyPairingPayload(result.data);
+                    connect();
+                });
+                return;
+            }
+            setStatus("Pairing failed: unsupported QR");
         } catch (Exception ex) {
             setStatus("Pairing failed: " + ex.getMessage());
         }
@@ -751,6 +869,22 @@ public class MainActivity extends Activity {
         view.setTextSize(10);
         view.setSingleLine(true);
         view.setPadding(dp(2), dp(2), 0, 0);
+        return view;
+    }
+
+    private TextView fieldLabel(String text) {
+        TextView view = new TextView(this);
+        view.setText(text);
+        view.setTextColor(0xFF374151);
+        view.setTextSize(12);
+        view.setTypeface(Typeface.DEFAULT_BOLD);
+        view.setPadding(0, 0, 0, dp(4));
+        return view;
+    }
+
+    private View fieldSpacer() {
+        View view = new View(this);
+        view.setBackgroundColor(0x00000000);
         return view;
     }
 
