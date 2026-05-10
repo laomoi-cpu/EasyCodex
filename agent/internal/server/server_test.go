@@ -139,6 +139,53 @@ func TestHealthDoesNotRequireAuth(t *testing.T) {
 	}
 }
 
+func TestPairingRequiresLocalhost(t *testing.T) {
+	srv, _ := testServer(t)
+	req := httptest.NewRequest(http.MethodGet, "/api/pairing", nil)
+	req.RemoteAddr = "192.168.1.20:12345"
+	rec := httptest.NewRecorder()
+
+	srv.Handler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("status = %d body = %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestPairingReturnsConnectionInfo(t *testing.T) {
+	srv, _ := testServer(t)
+	req := httptest.NewRequest(http.MethodGet, "/api/pairing", nil)
+	req.RemoteAddr = "127.0.0.1:12345"
+	rec := httptest.NewRecorder()
+
+	srv.Handler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d body = %s", rec.Code, rec.Body.String())
+	}
+	var payload struct {
+		OK   bool `json:"ok"`
+		Data struct {
+			Service string `json:"service"`
+			Token   string `json:"token"`
+			Network struct {
+				Listen     string `json:"listen"`
+				LANEnabled bool   `json:"lanEnabled"`
+			} `json:"network"`
+			Instances []instanceResponse `json:"instances"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("invalid json: %v", err)
+	}
+	if !payload.OK || payload.Data.Service != "easycodex-agent" || payload.Data.Token != "secret" {
+		t.Fatalf("unexpected payload: %#v", payload)
+	}
+	if payload.Data.Network.Listen != "127.0.0.1:0" || len(payload.Data.Instances) != 1 {
+		t.Fatalf("unexpected pairing data: %#v", payload.Data)
+	}
+}
+
 func TestInstancesRequiresAuth(t *testing.T) {
 	srv, _ := testServer(t)
 	req := httptest.NewRequest(http.MethodGet, "/api/instances", nil)

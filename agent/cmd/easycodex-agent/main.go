@@ -6,7 +6,6 @@ import (
 	"flag"
 	"fmt"
 	"log/slog"
-	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -16,6 +15,7 @@ import (
 	"time"
 
 	"easycodex-agent/internal/config"
+	"easycodex-agent/internal/netinfo"
 	"easycodex-agent/internal/server"
 	"easycodex-agent/internal/wezterm"
 )
@@ -69,9 +69,17 @@ func main() {
 	} else {
 		fmt.Printf("Config: %s not found, using defaults\n", displayConfigPath)
 	}
-	fmt.Printf("Local: http://%s\n", cfg.Listen)
-	if host, _, err := net.SplitHostPort(cfg.Listen); err == nil && (host == "0.0.0.0" || host == "") {
-		printLANAddresses(cfg.Listen)
+	network := netinfo.Inspect(cfg.Listen)
+	fmt.Printf("Local: %s\n", network.LocalURL)
+	if network.LANEnabled {
+		if len(network.LANURLs) == 0 {
+			fmt.Println("LAN:   enabled, but no LAN IPv4 address was detected")
+		}
+		for _, url := range network.LANURLs {
+			fmt.Printf("LAN:   %s\n", url)
+		}
+	} else {
+		fmt.Println("LAN:   disabled; set listen to 0.0.0.0:8765 to allow phone access")
 	}
 	fmt.Printf("Root:  %s\n", cfg.Root)
 	fmt.Printf("Token: %s\n", cfg.Token)
@@ -218,27 +226,5 @@ func cleanupLaunchedGUI(logger *slog.Logger, tracker *trackedWezTerm, cfg config
 			continue
 		}
 		logger.Info("closed launched gui process", "pid", item.PID, "class", item.Class)
-	}
-}
-
-func printLANAddresses(listen string) {
-	_, port, err := net.SplitHostPort(listen)
-	if err != nil {
-		return
-	}
-	addrs, err := net.InterfaceAddrs()
-	if err != nil {
-		return
-	}
-	for _, addr := range addrs {
-		ipNet, ok := addr.(*net.IPNet)
-		if !ok || ipNet.IP.IsLoopback() {
-			continue
-		}
-		ip := ipNet.IP.To4()
-		if ip == nil {
-			continue
-		}
-		fmt.Printf("LAN:   http://%s:%s\n", ip.String(), port)
 	}
 }

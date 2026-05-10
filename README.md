@@ -19,6 +19,9 @@ Default address:
 http://127.0.0.1:8765
 ```
 
+Phone access is disabled by default. Set `agent\config.json` to `0.0.0.0:8765`
+when testing from Android on the same LAN.
+
 Instance parameters are controlled by `agent\config.json`. If that file does not exist, the Agent uses
 the default instance:
 

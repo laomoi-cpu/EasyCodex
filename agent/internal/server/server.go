@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"sort"
 	"strconv"
@@ -16,6 +17,7 @@ import (
 	"time"
 
 	"easycodex-agent/internal/config"
+	"easycodex-agent/internal/netinfo"
 )
 
 type WezTerm interface {
@@ -31,6 +33,14 @@ type Server struct {
 	wezterm   WezTerm
 	instances map[string]config.Instance
 	logger    *slog.Logger
+}
+
+type pairingResponse struct {
+	Service     string             `json:"service"`
+	Network     netinfo.Info       `json:"network"`
+	Token       string             `json:"token"`
+	Instances   []instanceResponse `json:"instances"`
+	GeneratedAt string             `json:"generatedAt"`
 }
 
 type apiResponse struct {
@@ -141,6 +151,7 @@ func New(cfg config.Config, wezterm WezTerm, logger *slog.Logger) (*Server, erro
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/health", s.health)
+	mux.HandleFunc("GET /api/pairing", s.pairing)
 	mux.HandleFunc("GET /api/instances", s.auth(s.instancesList))
 	mux.HandleFunc("POST /api/instances/{instanceID}/launch", s.auth(s.launch))
 	mux.HandleFunc("GET /api/instances/{instanceID}/sessions", s.auth(s.sessions))
@@ -152,10 +163,33 @@ func (s *Server) Handler() http.Handler {
 }
 
 func (s *Server) health(w http.ResponseWriter, r *http.Request) {
-	writeOK(w, http.StatusOK, map[string]any{"service": "easycodex-agent"})
+	network := netinfo.Inspect(s.cfg.Listen)
+	writeOK(w, http.StatusOK, map[string]any{
+		"service":    "easycodex-agent",
+		"time":       time.Now().Format(time.RFC3339Nano),
+		"lanEnabled": network.LANEnabled,
+	})
 }
 
 func (s *Server) instancesList(w http.ResponseWriter, r *http.Request) {
+	writeOK(w, http.StatusOK, map[string]any{"instances": s.instanceResponses()})
+}
+
+func (s *Server) pairing(w http.ResponseWriter, r *http.Request) {
+	if !isLocalRequest(r) {
+		writeError(w, http.StatusForbidden, errors.New("pairing is only available from localhost"))
+		return
+	}
+	writeOK(w, http.StatusOK, pairingResponse{
+		Service:     "easycodex-agent",
+		Network:     netinfo.Inspect(s.cfg.Listen),
+		Token:       s.cfg.Token,
+		Instances:   s.instanceResponses(),
+		GeneratedAt: time.Now().Format(time.RFC3339Nano),
+	})
+}
+
+func (s *Server) instanceResponses() []instanceResponse {
 	items := make([]instanceResponse, 0, len(s.cfg.Instances))
 	for _, instance := range s.cfg.Instances {
 		items = append(items, instanceResponse{
@@ -164,7 +198,7 @@ func (s *Server) instancesList(w http.ResponseWriter, r *http.Request) {
 			Class: instance.Class,
 		})
 	}
-	writeOK(w, http.StatusOK, map[string]any{"instances": items})
+	return items
 }
 
 func (s *Server) launch(w http.ResponseWriter, r *http.Request) {
@@ -450,6 +484,15 @@ func parseBool(value string) bool {
 	default:
 		return false
 	}
+}
+
+func isLocalRequest(r *http.Request) bool {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		host = r.RemoteAddr
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }
 
 func decodeSendText(body sendTextRequest) (string, error) {
