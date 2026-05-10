@@ -470,6 +470,9 @@ public class MainActivity extends Activity {
             return;
         }
         String pairUrl = uri.getQueryParameter("url");
+        if (pairUrl == null || pairUrl.isEmpty()) {
+            pairUrl = uri.getQueryParameter("u");
+        }
         if (pairUrl != null && !pairUrl.isEmpty()) {
             setStatus("Pairing from PC...");
             requestAbsolute(pairUrl, result -> {

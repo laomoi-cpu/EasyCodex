@@ -19,6 +19,7 @@ import (
 
 	"easycodex-agent/internal/config"
 	"easycodex-agent/internal/netinfo"
+	"easycodex-agent/internal/qr"
 )
 
 type WezTerm interface {
@@ -167,6 +168,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/health", s.health)
 	mux.HandleFunc("GET /api/pairing", s.pairing)
 	mux.HandleFunc("GET /pairing", s.pairingPage)
+	mux.HandleFunc("GET /api/pairing/qr.svg", s.pairingQR)
 	mux.HandleFunc("GET /api/mobile-pair", s.mobilePair)
 	mux.HandleFunc("GET /api/config", s.auth(s.appConfig))
 	mux.HandleFunc("GET /api/instances", s.auth(s.instancesList))
@@ -227,13 +229,31 @@ func (s *Server) pairingPage(w http.ResponseWriter, r *http.Request) {
 </head><body><h1>EasyCodex Pairing</h1><p class="hint">Scan the QR code whose address is on the same Wi-Fi network as your phone. VPN and virtual adapter addresses may not work.</p><div class="grid">`)
 	for _, baseURL := range baseURLs {
 		pairURL := baseURL + "/api/mobile-pair?code=" + url.QueryEscape(s.mobilePairCode())
-		deepLink := "easycodex://pair?url=" + url.QueryEscape(pairURL)
-		qrURL := "https://api.qrserver.com/v1/create-qr-code/?size=320x320&data=" + url.QueryEscape(deepLink)
+		deepLink := "easycodex://pair?u=" + url.QueryEscape(pairURL)
+		qrURL := "/api/pairing/qr.svg?data=" + url.QueryEscape(deepLink)
 		fmt.Fprintf(w, `<div class="panel"><img class="qr" src="%s" alt="Pairing QR"><div class="label">Phone Base URL</div><div class="value">%s</div><div class="label">Pair Link</div><div class="value">%s</div></div>`, qrURL, baseURL, deepLink)
 	}
 	fmt.Fprint(w, `</div><p class="warn">If the phone cannot connect, set listen to 0.0.0.0:8765 and allow the Windows firewall.</p></body></html>`)
 }
 
+func (s *Server) pairingQR(w http.ResponseWriter, r *http.Request) {
+	if !isLocalRequest(r) {
+		writeError(w, http.StatusForbidden, errors.New("pairing QR is only available from localhost"))
+		return
+	}
+	data := r.URL.Query().Get("data")
+	if data == "" {
+		writeError(w, http.StatusBadRequest, errors.New("data is required"))
+		return
+	}
+	svg, err := qr.SVG(data, 8)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	w.Header().Set("Content-Type", "image/svg+xml; charset=utf-8")
+	_, _ = w.Write([]byte(svg))
+}
 func (s *Server) mobilePair(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Query().Get("code") != s.mobilePairCode() {
 		writeError(w, http.StatusForbidden, errors.New("invalid pairing code"))

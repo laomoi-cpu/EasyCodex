@@ -3,6 +3,7 @@ package netinfo
 import (
 	"net"
 	"strconv"
+	"strings"
 )
 
 type Info struct {
@@ -34,23 +35,46 @@ func Inspect(listen string) Info {
 }
 
 func LANURLs(port string) []string {
-	addrs, err := net.InterfaceAddrs()
+	interfaces, err := net.Interfaces()
 	if err != nil {
 		return nil
 	}
 	urls := []string{}
-	for _, addr := range addrs {
-		ipNet, ok := addr.(*net.IPNet)
-		if !ok {
+	for _, iface := range interfaces {
+		if !isUsableInterface(iface) {
 			continue
 		}
-		ip := ipNet.IP.To4()
-		if ip == nil || !isUsableLANIPv4(ip) {
+		addrs, err := iface.Addrs()
+		if err != nil {
 			continue
 		}
-		urls = append(urls, "http://"+net.JoinHostPort(ip.String(), port))
+		for _, addr := range addrs {
+			ipNet, ok := addr.(*net.IPNet)
+			if !ok {
+				continue
+			}
+			ip := ipNet.IP.To4()
+			if ip == nil || !isUsableLANIPv4(ip) {
+				continue
+			}
+			urls = append(urls, "http://"+net.JoinHostPort(ip.String(), port))
+		}
 	}
 	return urls
+}
+
+func isUsableInterface(iface net.Interface) bool {
+	if iface.Flags&net.FlagUp == 0 || iface.Flags&net.FlagLoopback != 0 {
+		return false
+	}
+	name := strings.ToLower(iface.Name)
+	blocked := []string{"virtualbox", "vmware", "vethernet", "hyper-v", "docker", "openvpn", "tap", "tailscale", "zerotier", "bluetooth", "loopback"}
+	for _, item := range blocked {
+		if strings.Contains(name, item) {
+			return false
+		}
+	}
+	return true
 }
 
 func isUsableLANIPv4(ip net.IP) bool {
