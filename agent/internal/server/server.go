@@ -213,18 +213,25 @@ func (s *Server) pairingPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	network := netinfo.Inspect(s.cfg.Listen)
-	baseURL := network.LocalURL
-	if len(network.LANURLs) > 0 {
-		baseURL = network.LANURLs[0]
+	baseURLs := append([]string(nil), network.LANURLs...)
+	if len(baseURLs) == 0 {
+		baseURLs = append(baseURLs, network.LocalURL)
+	} else {
+		baseURLs = append(baseURLs, network.LocalURL)
 	}
-	pairURL := baseURL + "/api/mobile-pair?code=" + url.QueryEscape(s.mobilePairCode())
-	deepLink := "easycodex://pair?url=" + url.QueryEscape(pairURL)
-	qrURL := "https://api.qrserver.com/v1/create-qr-code/?size=320x320&data=" + url.QueryEscape(deepLink)
+
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	fmt.Fprintf(w, `<!doctype html>
+	fmt.Fprint(w, `<!doctype html>
 <html><head><meta charset="utf-8"><title>EasyCodex Pairing</title>
-<style>body{font-family:Segoe UI,Arial,sans-serif;margin:32px;background:#f6f7f9;color:#111827}.panel{max-width:560px;background:white;border:1px solid #d1d5db;border-radius:8px;padding:24px}.qr{width:320px;height:320px;border:1px solid #e5e7eb}.label{font-size:12px;color:#6b7280;margin-top:18px}.value{font-family:Consolas,monospace;word-break:break-all;background:#f3f4f6;padding:10px;border-radius:6px}.warn{color:#92400e;background:#fffbeb;border:1px solid #f59e0b;padding:10px;border-radius:6px}</style>
-</head><body><div class="panel"><h1>EasyCodex Pairing</h1><p>Use the Android app to scan this QR code.</p><img class="qr" src="%s" alt="Pairing QR"><div class="label">Phone Base URL</div><div class="value">%s</div><div class="label">Pair Link</div><div class="value">%s</div><p class="warn">If the phone cannot connect, set listen to 0.0.0.0:8765 and allow the Windows firewall.</p></div></body></html>`, qrURL, baseURL, deepLink)
+<style>body{font-family:Segoe UI,Arial,sans-serif;margin:32px;background:#f6f7f9;color:#111827}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(360px,1fr));gap:16px}.panel{background:white;border:1px solid #d1d5db;border-radius:8px;padding:24px}.qr{width:320px;height:320px;border:1px solid #e5e7eb}.label{font-size:12px;color:#6b7280;margin-top:18px}.value{font-family:Consolas,monospace;word-break:break-all;background:#f3f4f6;padding:10px;border-radius:6px}.warn{color:#92400e;background:#fffbeb;border:1px solid #f59e0b;padding:10px;border-radius:6px}.hint{max-width:760px}</style>
+</head><body><h1>EasyCodex Pairing</h1><p class="hint">Scan the QR code whose address is on the same Wi-Fi network as your phone. VPN and virtual adapter addresses may not work.</p><div class="grid">`)
+	for _, baseURL := range baseURLs {
+		pairURL := baseURL + "/api/mobile-pair?code=" + url.QueryEscape(s.mobilePairCode())
+		deepLink := "easycodex://pair?url=" + url.QueryEscape(pairURL)
+		qrURL := "https://api.qrserver.com/v1/create-qr-code/?size=320x320&data=" + url.QueryEscape(deepLink)
+		fmt.Fprintf(w, `<div class="panel"><img class="qr" src="%s" alt="Pairing QR"><div class="label">Phone Base URL</div><div class="value">%s</div><div class="label">Pair Link</div><div class="value">%s</div></div>`, qrURL, baseURL, deepLink)
+	}
+	fmt.Fprint(w, `</div><p class="warn">If the phone cannot connect, set listen to 0.0.0.0:8765 and allow the Windows firewall.</p></body></html>`)
 }
 
 func (s *Server) mobilePair(w http.ResponseWriter, r *http.Request) {

@@ -1,5 +1,5 @@
 {
-    "listen":  "127.0.0.1:8765",
+    "listen":  "0.0.0.0:8765",
     "root":  "",
     "token":  "easycodex-dev-token",
     "commandTimeoutSeconds":  5,

@@ -41,16 +41,20 @@ func LANURLs(port string) []string {
 	urls := []string{}
 	for _, addr := range addrs {
 		ipNet, ok := addr.(*net.IPNet)
-		if !ok || ipNet.IP.IsLoopback() {
+		if !ok {
 			continue
 		}
 		ip := ipNet.IP.To4()
-		if ip == nil {
+		if ip == nil || !isUsableLANIPv4(ip) {
 			continue
 		}
 		urls = append(urls, "http://"+net.JoinHostPort(ip.String(), port))
 	}
 	return urls
+}
+
+func isUsableLANIPv4(ip net.IP) bool {
+	return !ip.IsLoopback() && !ip.IsUnspecified() && !ip.IsLinkLocalUnicast()
 }
 
 func localHost(host string) string {
