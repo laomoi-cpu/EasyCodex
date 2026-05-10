@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"testing"
 
 	"easycodex-agent/internal/config"
@@ -183,6 +184,54 @@ func TestPairingReturnsConnectionInfo(t *testing.T) {
 	}
 	if payload.Data.Network.Listen != "127.0.0.1:0" || len(payload.Data.Instances) != 1 {
 		t.Fatalf("unexpected pairing data: %#v", payload.Data)
+	}
+}
+
+func TestSettingsSaveWritesConfigAndUpdatesAuth(t *testing.T) {
+	cfg := config.Defaults()
+	cfg.Listen = "127.0.0.1:0"
+	cfg.Root = `D:\EasyCodex`
+	cfg.Token = "old-secret"
+	path := filepath.Join(t.TempDir(), "config.json")
+	fake := &fakeWezTerm{}
+	srv, err := NewWithConfigPath(cfg, path, fake, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	body := bytes.NewBufferString(`{
+		"listen":"127.0.0.1:0",
+		"root":"D:\\EasyCodex",
+		"token":"new-secret",
+		"commandTimeoutSeconds":5,
+		"autoLaunch":["main"],
+		"closeLaunchedGuiOnExit":false,
+		"instances":[{"id":"main","name":"main","class":"easycodex"}],
+		"mobileDefaults":{"instanceId":"main","cwd":"D:\\mgame","command":["cmd.exe","/k","codex"]}
+	}`)
+	req := httptest.NewRequest(http.MethodPost, "/api/settings", body)
+	req.RemoteAddr = "127.0.0.1:12345"
+	rec := httptest.NewRecorder()
+
+	srv.Handler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d body = %s", rec.Code, rec.Body.String())
+	}
+	loaded, found, err := config.Load(path)
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+	if !found || loaded.Token != "new-secret" {
+		t.Fatalf("unexpected saved config: found=%v cfg=%#v", found, loaded)
+	}
+
+	authReq := httptest.NewRequest(http.MethodGet, "/api/instances", nil)
+	authReq.Header.Set("Authorization", "Bearer new-secret")
+	authRec := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(authRec, authReq)
+	if authRec.Code != http.StatusOK {
+		t.Fatalf("auth status = %d body = %s", authRec.Code, authRec.Body.String())
 	}
 }
 

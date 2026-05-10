@@ -43,11 +43,7 @@ type MobileDefaults struct {
 
 func Load(path string) (Config, bool, error) {
 	if path == "" {
-		root := os.Getenv("EASYCODEX_ROOT")
-		if root == "" {
-			root = inferRoot()
-		}
-		path = filepath.Join(root, "agent", "config.json")
+		path = DefaultPath()
 	}
 
 	cfg := Defaults()
@@ -82,6 +78,35 @@ func Load(path string) (Config, bool, error) {
 		cfg.Token = token
 	}
 	return cfg, true, nil
+}
+
+func DefaultPath() string {
+	root := os.Getenv("EASYCODEX_ROOT")
+	if root == "" {
+		root = inferRoot()
+	}
+	return filepath.Join(root, "agent", "config.json")
+}
+
+func Save(path string, cfg Config) error {
+	if path == "" {
+		path = DefaultPath()
+	}
+	Normalize(&cfg)
+	if err := Validate(cfg); err != nil {
+		return err
+	}
+	var buf bytes.Buffer
+	encoder := json.NewEncoder(&buf)
+	encoder.SetEscapeHTML(false)
+	encoder.SetIndent("", "  ")
+	if err := encoder.Encode(cfg); err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	return os.WriteFile(path, buf.Bytes(), 0o600)
 }
 
 func Defaults() Config {

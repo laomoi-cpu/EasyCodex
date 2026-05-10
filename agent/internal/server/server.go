@@ -11,10 +11,11 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
-	"net/url"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"easycodex-agent/internal/config"
@@ -31,10 +32,12 @@ type WezTerm interface {
 }
 
 type Server struct {
-	cfg       config.Config
-	wezterm   WezTerm
-	instances map[string]config.Instance
-	logger    *slog.Logger
+	mu         sync.RWMutex
+	cfg        config.Config
+	configPath string
+	wezterm    WezTerm
+	instances  map[string]config.Instance
+	logger     *slog.Logger
 }
 
 type pairingResponse struct {
@@ -67,6 +70,14 @@ type mobileDefaultsResponse struct {
 type appConfigResponse struct {
 	Instances []instanceResponse     `json:"instances"`
 	Defaults  mobileDefaultsResponse `json:"defaults"`
+}
+
+type settingsResponse struct {
+	Config          config.Config `json:"config"`
+	ConfigPath      string        `json:"configPath"`
+	Network         netinfo.Info  `json:"network"`
+	RestartRequired bool          `json:"restartRequired"`
+	RestartFields   []string      `json:"restartFields,omitempty"`
 }
 
 type sendTextRequest struct {
@@ -146,6 +157,11 @@ type textQuery struct {
 
 func New(cfg config.Config, wezterm WezTerm, logger *slog.Logger) (*Server, error) {
 	config.Normalize(&cfg)
+	return NewWithConfigPath(cfg, filepath.Join(cfg.Root, "agent", "config.json"), wezterm, logger)
+}
+
+func NewWithConfigPath(cfg config.Config, configPath string, wezterm WezTerm, logger *slog.Logger) (*Server, error) {
+	config.Normalize(&cfg)
 	if err := config.Validate(cfg); err != nil {
 		return nil, err
 	}
@@ -160,17 +176,23 @@ func New(cfg config.Config, wezterm WezTerm, logger *slog.Logger) (*Server, erro
 	for _, instance := range cfg.Instances {
 		instances[instance.ID] = instance
 	}
-	return &Server{cfg: cfg, wezterm: wezterm, instances: instances, logger: logger}, nil
+	return &Server{cfg: cfg, configPath: configPath, wezterm: wezterm, instances: instances, logger: logger}, nil
 }
 
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
+	mux.HandleFunc("GET /", s.homePage)
+	mux.HandleFunc("GET /status", s.statusPage)
+	mux.HandleFunc("GET /settings", s.settingsPage)
+	mux.HandleFunc("GET /assets/easycodex.svg", s.easycodexIcon)
 	mux.HandleFunc("GET /api/health", s.health)
 	mux.HandleFunc("GET /api/pairing", s.pairing)
 	mux.HandleFunc("GET /pairing", s.pairingPage)
 	mux.HandleFunc("GET /api/pairing/qr.svg", s.pairingQR)
 	mux.HandleFunc("GET /api/mobile-pair", s.mobilePair)
 	mux.HandleFunc("GET /api/config", s.auth(s.appConfig))
+	mux.HandleFunc("GET /api/settings", s.localOnly(s.settings))
+	mux.HandleFunc("POST /api/settings", s.localOnly(s.saveSettings))
 	mux.HandleFunc("GET /api/instances", s.auth(s.instancesList))
 	mux.HandleFunc("POST /api/instances/{instanceID}/launch", s.auth(s.launch))
 	mux.HandleFunc("GET /api/instances/{instanceID}/sessions", s.auth(s.sessions))
@@ -182,7 +204,8 @@ func (s *Server) Handler() http.Handler {
 }
 
 func (s *Server) health(w http.ResponseWriter, r *http.Request) {
-	network := netinfo.Inspect(s.cfg.Listen)
+	cfg := s.configSnapshot()
+	network := netinfo.Inspect(cfg.Listen)
 	writeOK(w, http.StatusOK, map[string]any{
 		"service":    "easycodex-agent",
 		"time":       time.Now().Format(time.RFC3339Nano),
@@ -199,10 +222,11 @@ func (s *Server) pairing(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusForbidden, errors.New("pairing is only available from localhost"))
 		return
 	}
+	cfg := s.configSnapshot()
 	writeOK(w, http.StatusOK, pairingResponse{
 		Service:     "easycodex-agent",
-		Network:     netinfo.Inspect(s.cfg.Listen),
-		Token:       s.cfg.Token,
+		Network:     netinfo.Inspect(cfg.Listen),
+		Token:       cfg.Token,
 		Instances:   s.instanceResponses(),
 		Defaults:    s.mobileDefaultsResponse(),
 		GeneratedAt: time.Now().Format(time.RFC3339Nano),
@@ -214,26 +238,15 @@ func (s *Server) pairingPage(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusForbidden, errors.New("pairing page is only available from localhost"))
 		return
 	}
-	network := netinfo.Inspect(s.cfg.Listen)
+	cfg := s.configSnapshot()
+	network := netinfo.Inspect(cfg.Listen)
 	baseURLs := append([]string(nil), network.LANURLs...)
 	if len(baseURLs) == 0 {
 		baseURLs = append(baseURLs, network.LocalURL)
 	} else {
 		baseURLs = append(baseURLs, network.LocalURL)
 	}
-
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	fmt.Fprint(w, `<!doctype html>
-<html><head><meta charset="utf-8"><title>EasyCodex Pairing</title>
-<style>body{font-family:Segoe UI,Arial,sans-serif;margin:32px;background:#f6f7f9;color:#111827}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(360px,1fr));gap:16px}.panel{background:white;border:1px solid #d1d5db;border-radius:8px;padding:24px}.qr{width:320px;height:320px;border:1px solid #e5e7eb}.label{font-size:12px;color:#6b7280;margin-top:18px}.value{font-family:Consolas,monospace;word-break:break-all;background:#f3f4f6;padding:10px;border-radius:6px}.warn{color:#92400e;background:#fffbeb;border:1px solid #f59e0b;padding:10px;border-radius:6px}.hint{max-width:760px}</style>
-</head><body><h1>EasyCodex Pairing</h1><p class="hint">Scan the QR code whose address is on the same Wi-Fi network as your phone. VPN and virtual adapter addresses may not work.</p><div class="grid">`)
-	for _, baseURL := range baseURLs {
-		pairURL := baseURL + "/api/mobile-pair?code=" + url.QueryEscape(s.mobilePairCode())
-		deepLink := "easycodex://pair?u=" + url.QueryEscape(pairURL)
-		qrURL := "/api/pairing/qr.svg?data=" + url.QueryEscape(deepLink)
-		fmt.Fprintf(w, `<div class="panel"><img class="qr" src="%s" alt="Pairing QR"><div class="label">Phone Base URL</div><div class="value">%s</div><div class="label">Pair Link</div><div class="value">%s</div></div>`, qrURL, baseURL, deepLink)
-	}
-	fmt.Fprint(w, `</div><p class="warn">If the phone cannot connect, set listen to 0.0.0.0:8765 and allow the Windows firewall.</p></body></html>`)
+	s.writePairingConsole(w, baseURLs)
 }
 
 func (s *Server) pairingQR(w http.ResponseWriter, r *http.Request) {
@@ -267,15 +280,17 @@ func (s *Server) mobilePair(w http.ResponseWriter, r *http.Request) {
 		}
 		baseURL = scheme + "://" + r.Host
 	}
+	cfg := s.configSnapshot()
 	writeOK(w, http.StatusOK, map[string]any{
 		"baseUrl":  baseURL,
-		"token":    s.cfg.Token,
+		"token":    cfg.Token,
 		"defaults": s.mobileDefaultsResponse(),
 	})
 }
 
 func (s *Server) mobilePairCode() string {
-	sum := sha256.Sum256([]byte(s.cfg.Token + "|" + s.cfg.Listen))
+	cfg := s.configSnapshot()
+	sum := sha256.Sum256([]byte(cfg.Token + "|" + cfg.Listen))
 	return hex.EncodeToString(sum[:])[:12]
 }
 
@@ -287,17 +302,19 @@ func (s *Server) appConfig(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) mobileDefaultsResponse() mobileDefaultsResponse {
-	command := append([]string(nil), s.cfg.MobileDefaults.Command...)
+	cfg := s.configSnapshot()
+	command := append([]string(nil), cfg.MobileDefaults.Command...)
 	return mobileDefaultsResponse{
-		InstanceID: s.cfg.MobileDefaults.InstanceID,
-		CWD:        s.cfg.MobileDefaults.CWD,
+		InstanceID: cfg.MobileDefaults.InstanceID,
+		CWD:        cfg.MobileDefaults.CWD,
 		Command:    command,
 	}
 }
 
 func (s *Server) instanceResponses() []instanceResponse {
-	items := make([]instanceResponse, 0, len(s.cfg.Instances))
-	for _, instance := range s.cfg.Instances {
+	cfg := s.configSnapshot()
+	items := make([]instanceResponse, 0, len(cfg.Instances))
+	for _, instance := range cfg.Instances {
 		items = append(items, instanceResponse{
 			ID:    instance.ID,
 			Name:  instance.Name,
@@ -511,7 +528,9 @@ func (s *Server) activePaneID(ctx context.Context, instance config.Instance) (st
 
 func (s *Server) instance(w http.ResponseWriter, r *http.Request) (config.Instance, bool) {
 	id := r.PathValue("instanceID")
+	s.mu.RLock()
 	instance, ok := s.instances[id]
+	s.mu.RUnlock()
 	if !ok {
 		writeError(w, http.StatusNotFound, fmt.Errorf("unknown instance %q", id))
 		return config.Instance{}, false
@@ -521,7 +540,8 @@ func (s *Server) instance(w http.ResponseWriter, r *http.Request) (config.Instan
 
 func (s *Server) auth(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if s.cfg.Token == "" {
+		cfg := s.configSnapshot()
+		if cfg.Token == "" {
 			next(w, r)
 			return
 		}
@@ -529,7 +549,7 @@ func (s *Server) auth(next http.HandlerFunc) http.HandlerFunc {
 		if token == "" {
 			token = r.Header.Get("X-EasyCodex-Token")
 		}
-		if token != s.cfg.Token {
+		if token != cfg.Token {
 			writeError(w, http.StatusUnauthorized, errors.New("unauthorized"))
 			return
 		}
@@ -542,6 +562,105 @@ func (s *Server) logRequests(next http.Handler) http.Handler {
 		s.logger.Info("request", "method", r.Method, "path", r.URL.Path, "remote", r.RemoteAddr)
 		next.ServeHTTP(w, r)
 	})
+}
+
+func (s *Server) localOnly(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if !isLocalRequest(r) {
+			writeError(w, http.StatusForbidden, errors.New("this endpoint is only available from localhost"))
+			return
+		}
+		next(w, r)
+	}
+}
+
+func (s *Server) settings(w http.ResponseWriter, r *http.Request) {
+	cfg := s.configSnapshot()
+	writeOK(w, http.StatusOK, settingsResponse{
+		Config:     cfg,
+		ConfigPath: s.configPath,
+		Network:    netinfo.Inspect(cfg.Listen),
+	})
+}
+
+func (s *Server) saveSettings(w http.ResponseWriter, r *http.Request) {
+	var next config.Config
+	if err := json.NewDecoder(r.Body).Decode(&next); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	if next.Token == "" {
+		token, err := config.GenerateToken()
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err)
+			return
+		}
+		next.Token = token
+	}
+	config.Normalize(&next)
+	if err := config.Validate(next); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+
+	current := s.configSnapshot()
+	if err := config.Save(s.configPath, next); err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	s.setConfig(next)
+	restartFields := changedRestartFields(current, next)
+	writeOK(w, http.StatusOK, settingsResponse{
+		Config:          next,
+		ConfigPath:      s.configPath,
+		Network:         netinfo.Inspect(next.Listen),
+		RestartRequired: len(restartFields) > 0,
+		RestartFields:   restartFields,
+	})
+}
+
+func (s *Server) configSnapshot() config.Config {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return cloneConfig(s.cfg)
+}
+
+func (s *Server) setConfig(cfg config.Config) {
+	instances := make(map[string]config.Instance, len(cfg.Instances))
+	for _, instance := range cfg.Instances {
+		instances[instance.ID] = instance
+	}
+	s.mu.Lock()
+	s.cfg = cloneConfig(cfg)
+	s.instances = instances
+	s.mu.Unlock()
+}
+
+func cloneConfig(cfg config.Config) config.Config {
+	cfg.AutoLaunch = append([]string(nil), cfg.AutoLaunch...)
+	cfg.Instances = append([]config.Instance(nil), cfg.Instances...)
+	cfg.MobileDefaults.Command = append([]string(nil), cfg.MobileDefaults.Command...)
+	return cfg
+}
+
+func changedRestartFields(before, after config.Config) []string {
+	fields := []string{}
+	if before.Listen != after.Listen {
+		fields = append(fields, "listen")
+	}
+	if before.Root != after.Root {
+		fields = append(fields, "root")
+	}
+	if before.CommandTimeoutSeconds != after.CommandTimeoutSeconds {
+		fields = append(fields, "commandTimeoutSeconds")
+	}
+	if strings.Join(before.AutoLaunch, "\x00") != strings.Join(after.AutoLaunch, "\x00") {
+		fields = append(fields, "autoLaunch")
+	}
+	if before.CloseLaunchedGUIOnExit != after.CloseLaunchedGUIOnExit {
+		fields = append(fields, "closeLaunchedGuiOnExit")
+	}
+	return fields
 }
 
 func writeJSON(w http.ResponseWriter, status int, payload any) {

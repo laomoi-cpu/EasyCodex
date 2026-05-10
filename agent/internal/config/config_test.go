@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -95,6 +96,34 @@ func TestLoadConfigFileWithUTF8BOM(t *testing.T) {
 	}
 	if !found || cfg.Token != "secret" {
 		t.Fatalf("unexpected config: found=%v cfg=%#v", found, cfg)
+	}
+}
+
+func TestSaveWritesConfigFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+	cfg := Defaults()
+	cfg.Root = `D:\EasyCodex`
+	cfg.Token = "saved-token"
+	cfg.Listen = "0.0.0.0:8765"
+	cfg.MobileDefaults.CWD = `D:\mgame`
+	cfg.MobileDefaults.Command = []string{"cmd.exe", "/k", `cd /d D:\mgame && codex`}
+
+	if err := Save(path, cfg); err != nil {
+		t.Fatalf("Save returned error: %v", err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), `&& codex`) {
+		t.Fatalf("expected readable command in saved config: %s", data)
+	}
+	loaded, found, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+	if !found || loaded.Token != "saved-token" || loaded.Listen != "0.0.0.0:8765" {
+		t.Fatalf("unexpected loaded config: found=%v cfg=%#v", found, loaded)
 	}
 }
 

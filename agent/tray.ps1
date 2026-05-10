@@ -7,9 +7,30 @@ param(
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 
+function New-EasyCodexIcon {
+    $bitmap = New-Object System.Drawing.Bitmap 64, 64
+    $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
+    $graphics.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
+    $rect = New-Object System.Drawing.Rectangle 0, 0, 64, 64
+    $brush = New-Object System.Drawing.Drawing2D.LinearGradientBrush $rect, ([System.Drawing.Color]::FromArgb(15, 139, 141)), ([System.Drawing.Color]::FromArgb(245, 158, 11)), 45
+    $graphics.FillRectangle($brush, $rect)
+    $font = New-Object System.Drawing.Font 'Segoe UI', 20, ([System.Drawing.FontStyle]::Bold)
+    $textBrush = [System.Drawing.Brushes]::White
+    $graphics.DrawString('EC', $font, $textBrush, 10, 15)
+    $pen = New-Object System.Drawing.Pen ([System.Drawing.Color]::FromArgb(235, 255, 255, 255)), 4
+    $graphics.DrawLine($pen, 14, 48, 50, 48)
+    $icon = [System.Drawing.Icon]::FromHandle($bitmap.GetHicon())
+    return @{ Icon = $icon; Bitmap = $bitmap; Graphics = $graphics; Brush = $brush; Font = $font; Pen = $pen }
+}
+
+$baseUrl = $PairingUrl -replace '/pairing$', ''
+$settingsUrl = "$baseUrl/settings"
+$statusUrl = "$baseUrl/status"
+$iconParts = New-EasyCodexIcon
+
 $notify = New-Object System.Windows.Forms.NotifyIcon
 $notify.Text = 'EasyCodex Agent'
-$notify.Icon = [System.Drawing.SystemIcons]::Application
+$notify.Icon = $iconParts.Icon
 $notify.Visible = $true
 
 $menu = New-Object System.Windows.Forms.ContextMenuStrip
@@ -18,19 +39,14 @@ $pairItem = New-Object System.Windows.Forms.ToolStripMenuItem('Show Pairing QR')
 $pairItem.Add_Click({ Start-Process $PairingUrl })
 [void]$menu.Items.Add($pairItem)
 
-$configItem = New-Object System.Windows.Forms.ToolStripMenuItem('Open Config')
+$configItem = New-Object System.Windows.Forms.ToolStripMenuItem('Settings')
 $configItem.Add_Click({
-    if (Test-Path -LiteralPath $ConfigPath) {
-        Start-Process notepad.exe -ArgumentList @($ConfigPath)
-    } else {
-        [System.Windows.Forms.MessageBox]::Show("Config file not found:`n$ConfigPath", 'EasyCodex Agent') | Out-Null
-    }
+    Start-Process $settingsUrl
 })
 [void]$menu.Items.Add($configItem)
 
-$statusItem = New-Object System.Windows.Forms.ToolStripMenuItem('Open Local Status')
+$statusItem = New-Object System.Windows.Forms.ToolStripMenuItem('Status')
 $statusItem.Add_Click({
-    $statusUrl = $PairingUrl -replace '/pairing$', '/api/health'
     Start-Process $statusUrl
 })
 [void]$menu.Items.Add($statusItem)
@@ -68,3 +84,9 @@ if ($agentTimer -ne $null) {
     $agentTimer.Dispose()
 }
 $notify.Dispose()
+$iconParts.Icon.Dispose()
+$iconParts.Graphics.Dispose()
+$iconParts.Brush.Dispose()
+$iconParts.Font.Dispose()
+$iconParts.Pen.Dispose()
+$iconParts.Bitmap.Dispose()

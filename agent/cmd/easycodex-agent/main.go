@@ -48,10 +48,14 @@ func main() {
 		logger.Error("invalid config", "error", err)
 		os.Exit(1)
 	}
+	displayConfigPath := *configPath
+	if displayConfigPath == "" {
+		displayConfigPath = filepath.Join(cfg.Root, "agent", "config.json")
+	}
 
 	cli := wezterm.CLI{Root: cfg.Root, Timeout: cfg.CommandTimeout()}
 	tracker := &trackedWezTerm{cli: cli, logger: logger}
-	app, err := server.New(cfg, tracker, logger)
+	app, err := server.NewWithConfigPath(cfg, displayConfigPath, tracker, logger)
 	if err != nil {
 		logger.Error("failed to create server", "error", err)
 		os.Exit(1)
@@ -64,10 +68,6 @@ func main() {
 	}
 
 	fmt.Println("EasyCodex Agent started")
-	displayConfigPath := *configPath
-	if displayConfigPath == "" {
-		displayConfigPath = filepath.Join(cfg.Root, "agent", "config.json")
-	}
 	if found {
 		fmt.Printf("Config: %s\n", displayConfigPath)
 	} else {
