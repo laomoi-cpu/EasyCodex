@@ -35,7 +35,11 @@ type Instance struct {
 
 func Load(path string) (Config, bool, error) {
 	if path == "" {
-		path = filepath.Join("agent", "config.json")
+		root := os.Getenv("EASYCODEX_ROOT")
+		if root == "" {
+			root = inferRoot()
+		}
+		path = filepath.Join(root, "agent", "config.json")
 	}
 
 	cfg := Defaults()

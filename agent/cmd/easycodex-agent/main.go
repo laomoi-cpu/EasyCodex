@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"syscall"
 	"time"
 
@@ -19,7 +18,7 @@ import (
 )
 
 func main() {
-	configPath := flag.String("config", filepath.Join("agent", "config.json"), "config file path")
+	configPath := flag.String("config", "", "config file path")
 	listenOverride := flag.String("listen", "", "override listen address, for example 127.0.0.1:8765")
 	tokenOverride := flag.String("token", "", "override API token")
 	flag.Parse()

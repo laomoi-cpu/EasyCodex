@@ -28,6 +28,21 @@ func TestLoadMissingUsesDefaultsAndRuntimeToken(t *testing.T) {
 	}
 }
 
+func TestLoadDefaultPathUsesInferredRoot(t *testing.T) {
+	t.Setenv("EASYCODEX_ROOT", t.TempDir())
+
+	cfg, found, err := Load("")
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+	if found {
+		t.Fatalf("expected missing config")
+	}
+	if cfg.Root == "" {
+		t.Fatalf("expected inferred root")
+	}
+}
+
 func TestLoadConfigFile(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.json")
