@@ -194,6 +194,8 @@ public class MainActivity extends Activity {
         Button enterOnly = compactButton("Enter");
         Button ctrlC = compactButton("Ctrl+C");
         Button shiftTab = compactButton("S+Tab");
+        Button shiftPageUp = compactButton("S+PgUp");
+        Button shiftPageDown = compactButton("S+PgDn");
         Button space = compactButton("Space");
         Button up = compactButton("↑");
         Button down = compactButton("↓");
@@ -202,7 +204,9 @@ public class MainActivity extends Activity {
         keyRowOne.addView(enterOnly, rowWeightParams(1, -1, 0, dp(5)));
         keyRowOne.addView(ctrlC, rowWeightParams(1, -1, 0, dp(5)));
         keyRowOne.addView(shiftTab, rowWeightParams(1, -1, 0, dp(5)));
-        keyRowOne.addView(space, rowWeightParams(1, -1, 0, 0));
+        keyRowOne.addView(shiftPageUp, rowWeightParams(1, -1, 0, dp(5)));
+        keyRowOne.addView(shiftPageDown, rowWeightParams(1, -1, 0, 0));
+        keyRowTwo.addView(space, rowWeightParams(1, -1, 0, dp(5)));
         keyRowTwo.addView(up, rowWeightParams(1, -1, 0, dp(5)));
         keyRowTwo.addView(down, rowWeightParams(1, -1, 0, dp(5)));
         keyRowTwo.addView(esc, rowWeightParams(1, -1, 0, dp(5)));
@@ -234,6 +238,8 @@ public class MainActivity extends Activity {
         enterOnly.setOnClickListener(v -> sendRaw("", true));
         ctrlC.setOnClickListener(v -> sendRaw("\u0003", false));
         shiftTab.setOnClickListener(v -> sendRaw("\u001B[Z", false));
+        shiftPageUp.setOnClickListener(v -> sendRaw("\u001B[5;2~", false));
+        shiftPageDown.setOnClickListener(v -> sendRaw("\u001B[6;2~", false));
         space.setOnClickListener(v -> sendRaw(" ", false));
         up.setOnClickListener(v -> sendRaw("\u001B[A", false));
         down.setOnClickListener(v -> sendRaw("\u001B[B", false));
