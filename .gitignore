@@ -3,6 +3,12 @@ captures/
 .gocache/
 .gotelemetry/
 tools/
+android/.gradle/
+android/.gradle-local/
+android/build/
+android/app/build/
+*.apk
+*.aab
 agent/bin/
 agent/dist/
 agent/*.exe

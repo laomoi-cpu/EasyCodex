@@ -182,14 +182,7 @@ func autoLaunchInstances(ctx context.Context, logger *slog.Logger, weztermClient
 			logger.Warn("auto launch skipped unknown instance", "instance", id)
 			continue
 		}
-		exists, err := instanceHasSessions(ctx, weztermClient, instance.Class)
-		if err != nil {
-			logger.Info("auto launch list failed, launching instance", "instance", id, "class", instance.Class, "error", err)
-		}
-		if exists {
-			logger.Info("auto launch skipped existing instance", "instance", id, "class", instance.Class)
-			continue
-		}
+
 		pid, err := weztermClient.Launch(ctx, instance.Class)
 		if err != nil {
 			logger.Error("auto launch failed", "instance", id, "class", instance.Class, "error", err)
