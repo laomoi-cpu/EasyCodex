@@ -1,10 +1,12 @@
 package com.easycodex.mobile;
 
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.graphics.Typeface;
+import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
@@ -51,6 +53,8 @@ public class MainActivity extends Activity {
     private EditText commandInput;
     private TextView lastSentView;
     private Button currentPaneButton;
+    private LinearLayout keyPanel;
+    private boolean keyPanelExpanded = false;
 
     private String baseUrl = "http://127.0.0.1:8765";
     private String token = "easycodex-dev-token";
@@ -94,100 +98,90 @@ public class MainActivity extends Activity {
     private void buildUi() {
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setPadding(dp(12), dp(10), dp(12), dp(10));
-        root.setBackgroundColor(0xFFF9FAFB);
-
-        TextView title = new TextView(this);
-        title.setText("EasyCodex");
-        title.setTextSize(20);
-        title.setTypeface(Typeface.DEFAULT_BOLD);
-        title.setTextColor(0xFF111827);
-        root.addView(title, matchWrap());
-
-        LinearLayout connectRow = new LinearLayout(this);
-        connectRow.setOrientation(LinearLayout.VERTICAL);
-        connectRow.setPadding(0, dp(8), 0, dp(8));
+        root.setPadding(dp(8), dp(8), dp(8), dp(8));
+        root.setBackgroundColor(0xFFEEF2F7);
 
         baseUrlInput = input("Agent URL", baseUrl);
         tokenInput = input("Token", token);
-        connectRow.addView(baseUrlInput, matchWrap());
-        connectRow.addView(tokenInput, matchWrap());
 
-        LinearLayout actionRow = new LinearLayout(this);
-        actionRow.setOrientation(LinearLayout.HORIZONTAL);
-        Button connectButton = button("Test");
-        Button saveButton = button("Save");
-        Button refreshButton = button("Refresh");
-        actionRow.addView(connectButton, weightWrap(1));
-        actionRow.addView(saveButton, weightWrap(1));
-        actionRow.addView(refreshButton, weightWrap(1));
-        connectRow.addView(actionRow, matchWrap());
+        LinearLayout topBar = new LinearLayout(this);
+        topBar.setOrientation(LinearLayout.HORIZONTAL);
+        topBar.setGravity(Gravity.CENTER_VERTICAL);
+        topBar.setPadding(0, 0, 0, dp(6));
 
-        LinearLayout sessionRow = new LinearLayout(this);
-        sessionRow.setOrientation(LinearLayout.HORIZONTAL);
-        Button newCodexButton = button("New Codex @ D:\\mgame");
-        sessionRow.addView(newCodexButton, weightWrap(1));
-        connectRow.addView(sessionRow, matchWrap());
-        root.addView(connectRow, matchWrap());
-
-        statusView = label("Idle");
-        root.addView(statusView, matchWrap());
-
-        lastSentView = smallLabel("Last sent: -");
-        root.addView(lastSentView, matchWrap());
+        Button statusButton = button("Offline");
+        statusView = statusButton;
+        styleStatus("Idle");
+        Button settingsButton = iconButton("⚙");
+        topBar.addView(statusButton, new LinearLayout.LayoutParams(0, dp(38), 1));
+        topBar.addView(settingsButton, new LinearLayout.LayoutParams(dp(44), dp(38)));
+        root.addView(topBar, matchWrap());
 
         panesView = new LinearLayout(this);
         panesView.setOrientation(LinearLayout.HORIZONTAL);
         panesView.setGravity(Gravity.CENTER_VERTICAL);
         HorizontalScrollView paneScroll = new HorizontalScrollView(this);
         paneScroll.addView(panesView);
-        root.addView(paneScroll, fixedHeight(dp(64)));
+
+        LinearLayout sessionStrip = new LinearLayout(this);
+        sessionStrip.setOrientation(LinearLayout.HORIZONTAL);
+        sessionStrip.setGravity(Gravity.CENTER_VERTICAL);
+        sessionStrip.setPadding(0, 0, 0, dp(6));
+        Button newCodexButton = iconButton("+");
+        sessionStrip.addView(newCodexButton, new LinearLayout.LayoutParams(dp(44), dp(42)));
+        sessionStrip.addView(paneScroll, new LinearLayout.LayoutParams(0, dp(42), 1));
+        root.addView(sessionStrip, matchWrap());
 
         terminalScroll = new ScrollView(this);
         terminalView = new TextView(this);
-        terminalView.setTextColor(0xFFE5E7EB);
-        terminalView.setBackgroundColor(0xFF111827);
+        terminalView.setTextColor(0xFFE6EDF3);
+        terminalView.setBackground(rounded(0xFF0B1220, dp(8), 0));
         terminalView.setTypeface(Typeface.MONOSPACE);
-        terminalView.setTextSize(12);
-        terminalView.setPadding(dp(8), dp(8), dp(8), dp(8));
-        terminalView.setText("Connect to Agent, then select a pane.");
+        terminalView.setTextSize(12.5f);
+        terminalView.setPadding(dp(10), dp(10), dp(10), dp(10));
+        terminalView.setText("Tap the status button to connect, then select a pane.");
         terminalScroll.addView(terminalView, matchWrap());
+        terminalScroll.setFillViewport(true);
         root.addView(terminalScroll, new LinearLayout.LayoutParams(-1, 0, 1));
 
-        commandInput = multilineInput("Command", "");
-        root.addView(commandInput, matchWrap());
+        lastSentView = smallLabel("");
+        root.addView(lastSentView, fixedHeight(dp(18)));
 
-        LinearLayout sendRow = new LinearLayout(this);
-        sendRow.setOrientation(LinearLayout.HORIZONTAL);
-        Button sendEnter = button("Send Enter");
-        Button sendText = button("Send Text");
-        Button clearText = button("Clear");
-        sendRow.addView(sendEnter, weightWrap(1));
-        sendRow.addView(sendText, weightWrap(1));
-        sendRow.addView(clearText, weightWrap(1));
-        root.addView(sendRow, matchWrap());
+        keyPanel = new LinearLayout(this);
+        keyPanel.setOrientation(LinearLayout.HORIZONTAL);
+        keyPanel.setGravity(Gravity.CENTER_VERTICAL);
+        keyPanel.setVisibility(View.GONE);
+        Button enterOnly = compactButton("Enter");
+        Button ctrlC = compactButton("Ctrl+C");
+        Button tab = compactButton("Tab");
+        Button esc = compactButton("Esc");
+        Button clearText = compactButton("Clear");
+        keyPanel.addView(enterOnly, weightWrap(1));
+        keyPanel.addView(ctrlC, weightWrap(1));
+        keyPanel.addView(tab, weightWrap(1));
+        keyPanel.addView(esc, weightWrap(1));
+        keyPanel.addView(clearText, weightWrap(1));
+        root.addView(keyPanel, fixedHeight(dp(38)));
 
-        LinearLayout keyRow = new LinearLayout(this);
-        keyRow.setOrientation(LinearLayout.HORIZONTAL);
-        Button enterOnly = button("Enter");
-        Button ctrlC = button("Ctrl+C");
-        Button tab = button("Tab");
-        Button esc = button("Esc");
-        keyRow.addView(enterOnly, weightWrap(1));
-        keyRow.addView(ctrlC, weightWrap(1));
-        keyRow.addView(tab, weightWrap(1));
-        keyRow.addView(esc, weightWrap(1));
-        root.addView(keyRow, matchWrap());
+        LinearLayout inputRow = new LinearLayout(this);
+        inputRow.setOrientation(LinearLayout.HORIZONTAL);
+        inputRow.setGravity(Gravity.CENTER_VERTICAL);
+        commandInput = multilineInput("Message", "");
+        Button moreKeys = iconButton("⌘");
+        Button sendEnter = button("Send");
+        inputRow.addView(commandInput, new LinearLayout.LayoutParams(0, dp(48), 1));
+        inputRow.addView(moreKeys, new LinearLayout.LayoutParams(dp(44), dp(48)));
+        inputRow.addView(sendEnter, new LinearLayout.LayoutParams(dp(76), dp(48)));
+        root.addView(inputRow, matchWrap());
 
         setContentView(root);
 
-        connectButton.setOnClickListener(v -> connect());
-        saveButton.setOnClickListener(v -> saveConnection());
-        refreshButton.setOnClickListener(v -> loadSessions());
+        statusButton.setOnClickListener(v -> connect());
+        settingsButton.setOnClickListener(v -> showSettingsDialog());
         newCodexButton.setOnClickListener(v -> spawnCodexSession());
         sendEnter.setOnClickListener(v -> sendCommand(true));
-        sendText.setOnClickListener(v -> sendCommand(false));
         clearText.setOnClickListener(v -> commandInput.setText(""));
+        moreKeys.setOnClickListener(v -> toggleKeyPanel());
         enterOnly.setOnClickListener(v -> sendRaw("", true));
         ctrlC.setOnClickListener(v -> sendRaw("\u0003", false));
         tab.setOnClickListener(v -> sendRaw("\t", false));
@@ -211,6 +205,38 @@ public class MainActivity extends Activity {
         token = tokenInput.getText().toString().trim();
         saveSettings();
         setStatus("Saved");
+    }
+
+    private void showSettingsDialog() {
+        LinearLayout form = new LinearLayout(this);
+        form.setOrientation(LinearLayout.VERTICAL);
+        form.setPadding(dp(8), dp(6), dp(8), 0);
+
+        EditText urlField = input("Agent URL", baseUrl);
+        EditText tokenField = input("Token", token);
+        form.addView(urlField, matchWrap());
+        form.addView(tokenField, matchWrap());
+
+        new AlertDialog.Builder(this)
+                .setTitle("Server Settings")
+                .setView(form)
+                .setPositiveButton("Save", (dialog, which) -> {
+                    baseUrlInput.setText(urlField.getText().toString());
+                    tokenInput.setText(tokenField.getText().toString());
+                    saveConnection();
+                })
+                .setNeutralButton("Connect", (dialog, which) -> {
+                    baseUrlInput.setText(urlField.getText().toString());
+                    tokenInput.setText(tokenField.getText().toString());
+                    connect();
+                })
+                .setNegativeButton("Cancel", null)
+                .show();
+    }
+
+    private void toggleKeyPanel() {
+        keyPanelExpanded = !keyPanelExpanded;
+        keyPanel.setVisibility(keyPanelExpanded ? View.VISIBLE : View.GONE);
     }
 
     private void loadRemoteConfig() {
@@ -320,7 +346,7 @@ public class MainActivity extends Activity {
             item.setAllCaps(false);
             stylePaneButton(item, pane.id.equals(paneId), pane.active);
             item.setOnClickListener(v -> selectPane(pane.id));
-            panesView.addView(item, new LinearLayout.LayoutParams(dp(150), dp(52)));
+            panesView.addView(item, new LinearLayout.LayoutParams(dp(132), dp(38)));
             if (pane.id.equals(paneId)) {
                 currentPaneButton = item;
             }
@@ -671,7 +697,10 @@ public class MainActivity extends Activity {
         input.setText(value);
         input.setSingleLine(true);
         input.setTextSize(14);
-        input.setPadding(dp(8), 0, dp(8), 0);
+        input.setTextColor(0xFF111827);
+        input.setHintTextColor(0xFF8A94A6);
+        input.setBackground(rounded(0xFFFFFFFF, dp(8), 0xFFD5DAE3));
+        input.setPadding(dp(10), 0, dp(10), 0);
         return input;
     }
 
@@ -699,32 +728,96 @@ public class MainActivity extends Activity {
         TextView view = new TextView(this);
         view.setText(text);
         view.setTextColor(0xFF6B7280);
-        view.setTextSize(12);
+        view.setTextSize(10);
         view.setSingleLine(true);
-        view.setPadding(0, 0, 0, dp(6));
+        view.setPadding(dp(2), dp(2), 0, 0);
         return view;
     }
 
     private Button button(String text) {
         Button button = new Button(this);
         button.setText(text);
-        button.setTextSize(12);
+        button.setAllCaps(false);
+        button.setTextSize(13);
+        button.setSingleLine(true);
+        button.setTextColor(0xFFFFFFFF);
+        button.setBackground(rounded(0xFF2563EB, dp(8), 0));
+        button.setMinHeight(0);
+        button.setMinimumHeight(0);
+        button.setPadding(dp(8), 0, dp(8), 0);
+        return button;
+    }
+
+    private Button iconButton(String text) {
+        Button button = button(text);
+        button.setTextSize(18);
+        button.setTextColor(0xFF1F2937);
+        button.setBackground(rounded(0xFFFFFFFF, dp(8), 0xFFD5DAE3));
+        return button;
+    }
+
+    private Button compactButton(String text) {
+        Button button = button(text);
+        button.setTextSize(11);
+        button.setTextColor(0xFF1F2937);
+        button.setBackground(rounded(0xFFE8EEF8, dp(7), 0xFFD5DAE3));
         return button;
     }
 
     private void stylePaneButton(Button button, boolean selected, boolean active) {
         button.setTextColor(selected ? 0xFFFFFFFF : 0xFF111827);
         if (selected) {
-            button.setBackgroundColor(0xFF2563EB);
+            button.setBackground(rounded(0xFF2563EB, dp(8), 0));
         } else if (active) {
-            button.setBackgroundColor(0xFFD1FAE5);
+            button.setBackground(rounded(0xFFD1FAE5, dp(8), 0xFFA7F3D0));
         } else {
-            button.setBackgroundColor(0xFFE5E7EB);
+            button.setBackground(rounded(0xFFFFFFFF, dp(8), 0xFFD5DAE3));
         }
+        button.setTextSize(11);
+        button.setPadding(dp(8), 0, dp(8), 0);
     }
 
     private void setStatus(String text) {
+        if (statusView == null) {
+            return;
+        }
         statusView.setText(text);
+        styleStatus(text);
+    }
+
+    private void styleStatus(String text) {
+        if (statusView == null) {
+            return;
+        }
+        String value = text == null ? "" : text.toLowerCase();
+        int fill = 0xFFE5E7EB;
+        int stroke = 0xFFD1D5DB;
+        int textColor = 0xFF374151;
+        if (value.contains("connected") || value.contains("configured") || value.contains("sent") || value.contains("started") || value.contains("saved")) {
+            fill = 0xFFD1FAE5;
+            stroke = 0xFF86EFAC;
+            textColor = 0xFF065F46;
+        } else if (value.contains("connecting") || value.contains("loading") || value.contains("sending") || value.contains("starting") || value.contains("pane ")) {
+            fill = 0xFFDBEAFE;
+            stroke = 0xFF93C5FD;
+            textColor = 0xFF1D4ED8;
+        } else if (value.contains("failed") || value.contains("error") || value.contains("unavailable") || value.contains("select")) {
+            fill = 0xFFFEE2E2;
+            stroke = 0xFFFCA5A5;
+            textColor = 0xFF991B1B;
+        }
+        statusView.setTextColor(textColor);
+        statusView.setBackground(rounded(fill, dp(999), stroke));
+    }
+
+    private GradientDrawable rounded(int fill, int radius, int stroke) {
+        GradientDrawable drawable = new GradientDrawable();
+        drawable.setColor(fill);
+        drawable.setCornerRadius(radius);
+        if (stroke != 0) {
+            drawable.setStroke(dp(1), stroke);
+        }
+        return drawable;
     }
 
     private void hideKeyboard() {
@@ -757,7 +850,11 @@ public class MainActivity extends Activity {
 
     private String paneLabel(PaneInfo pane) {
         String prefix = pane.active ? "* " : "";
-        return prefix + pane.id + " " + safeTitle(pane);
+        String label = prefix + pane.id + " " + safeTitle(pane);
+        if (label.length() > 24) {
+            label = label.substring(0, 23) + "...";
+        }
+        return label;
     }
 
     private String safeTitle(PaneInfo pane) {
