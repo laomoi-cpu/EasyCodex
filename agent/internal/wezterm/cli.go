@@ -64,6 +64,11 @@ func (cli CLI) SendText(ctx context.Context, class, paneID, text string, noPaste
 	return err
 }
 
+func (cli CLI) KillPane(ctx context.Context, class, paneID string) error {
+	_, err := cli.run(ctx, class, nil, "kill-pane", "--pane-id", paneID)
+	return err
+}
+
 func (cli CLI) Spawn(ctx context.Context, class, paneID, cwd string, newWindow bool, command []string) (string, error) {
 	args := []string{"spawn"}
 	if paneID != "" {

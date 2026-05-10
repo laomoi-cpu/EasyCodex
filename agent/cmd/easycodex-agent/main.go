@@ -215,6 +215,10 @@ func (tracked *trackedWezTerm) SendText(ctx context.Context, class, paneID, text
 	return tracked.cli.SendText(ctx, class, paneID, text, noPaste)
 }
 
+func (tracked *trackedWezTerm) KillPane(ctx context.Context, class, paneID string) error {
+	return tracked.cli.KillPane(ctx, class, paneID)
+}
+
 func (tracked *trackedWezTerm) Spawn(ctx context.Context, class, paneID, cwd string, newWindow bool, command []string) (string, error) {
 	return tracked.cli.Spawn(ctx, class, paneID, cwd, newWindow, command)
 }

@@ -28,6 +28,7 @@ type WezTerm interface {
 	List(ctx context.Context, class string) (json.RawMessage, error)
 	GetText(ctx context.Context, class, paneID string, lines int, escapes bool) (string, error)
 	SendText(ctx context.Context, class, paneID, text string, noPaste bool) error
+	KillPane(ctx context.Context, class, paneID string) error
 	Spawn(ctx context.Context, class, paneID, cwd string, newWindow bool, command []string) (string, error)
 }
 
@@ -199,6 +200,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/instances/{instanceID}/panes/{paneID}/text", s.auth(s.paneText))
 	mux.HandleFunc("GET /api/instances/{instanceID}/panes/{paneID}/snapshot", s.auth(s.paneSnapshot))
 	mux.HandleFunc("POST /api/instances/{instanceID}/panes/{paneID}/send", s.auth(s.sendText))
+	mux.HandleFunc("DELETE /api/instances/{instanceID}/panes/{paneID}", s.auth(s.deletePane))
 	mux.HandleFunc("POST /api/instances/{instanceID}/spawn", s.auth(s.spawn))
 	return s.logRequests(mux)
 }
@@ -472,6 +474,27 @@ func (s *Server) sendText(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	writeOK(w, http.StatusOK, map[string]any{"sent": true})
+}
+
+func (s *Server) deletePane(w http.ResponseWriter, r *http.Request) {
+	instance, ok := s.instance(w, r)
+	if !ok {
+		return
+	}
+	paneID := r.PathValue("paneID")
+	if !validID(paneID) {
+		writeError(w, http.StatusBadRequest, errors.New("invalid pane id"))
+		return
+	}
+	if err := s.wezterm.KillPane(r.Context(), instance.Class, paneID); err != nil {
+		writeError(w, http.StatusBadGateway, err)
+		return
+	}
+	writeOK(w, http.StatusOK, map[string]any{
+		"instance": instance.ID,
+		"paneId":   paneID,
+		"deleted":  true,
+	})
 }
 
 func (s *Server) spawn(w http.ResponseWriter, r *http.Request) {

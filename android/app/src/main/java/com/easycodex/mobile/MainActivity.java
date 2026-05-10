@@ -516,8 +516,11 @@ public class MainActivity extends Activity {
                 }
                 PaneInfo pane = new PaneInfo();
                 pane.id = item.optString("paneId");
+                pane.windowId = item.optInt("windowId");
+                pane.tabId = item.optInt("tabId");
                 pane.title = item.optString("title");
                 pane.cwd = item.optString("cwd");
+                pane.workspace = item.optString("workspace");
                 pane.active = item.optBoolean("isActive");
                 panes.add(pane);
             }
@@ -531,6 +534,10 @@ public class MainActivity extends Activity {
             item.setAllCaps(false);
             stylePaneButton(item, pane.id.equals(paneId), pane.active);
             item.setOnClickListener(v -> selectPane(pane.id));
+            item.setOnLongClickListener(v -> {
+                showPaneDetailsDialog(pane);
+                return true;
+            });
             panesView.addView(item, rowFixedParams(dp(132), dp(38), 0, dp(6)));
             if (pane.id.equals(paneId)) {
                 currentPaneButton = item;
@@ -592,8 +599,13 @@ public class MainActivity extends Activity {
     }
 
     private void spawnCodexSession() {
+        spawnCodexSession(defaultCwd, "Starting Codex @ " + defaultCwd + "...", "New Codex failed: ");
+    }
+
+    private void spawnCodexSession(String cwd, String startingStatus, String failurePrefix) {
         saveConnection();
-        setStatus("Starting Codex @ " + defaultCwd + "...");
+        String targetCwd = cwd == null || cwd.isEmpty() ? defaultCwd : cwd;
+        setStatus(startingStatus);
         try {
             JSONObject body = new JSONObject();
             JSONArray command = new JSONArray();
@@ -601,11 +613,11 @@ public class MainActivity extends Activity {
             for (String part : defaultCommand) {
                 command.put(part);
             }
-            body.put("cwd", defaultCwd);
+            body.put("cwd", targetCwd);
             body.put("command", command);
             request("POST", "/api/instances/" + instanceId + "/spawn", body, true, result -> {
                 if (!result.ok) {
-                    setStatus("New Codex failed: " + result.error);
+                    setStatus(failurePrefix + result.error);
                     return;
                 }
                 String newPaneId = result.data.optString("paneId");
@@ -613,8 +625,86 @@ public class MainActivity extends Activity {
                 loadSessionsThenSelect(newPaneId);
             });
         } catch (Exception ex) {
-            setStatus("New Codex failed: " + ex.getMessage());
+            setStatus(failurePrefix + ex.getMessage());
         }
+    }
+
+    private void showPaneDetailsDialog(PaneInfo pane) {
+        LinearLayout panel = new LinearLayout(this);
+        panel.setOrientation(LinearLayout.VERTICAL);
+        panel.setPadding(dp(18), dp(16), dp(18), dp(14));
+        panel.setBackground(rounded(0xFFFFFFFF, dp(12), 0));
+
+        TextView title = new TextView(this);
+        title.setText("Session " + pane.id);
+        title.setTextSize(18);
+        title.setTypeface(Typeface.DEFAULT_BOLD);
+        title.setTextColor(0xFF111827);
+        panel.addView(title, matchWrap());
+
+        panel.addView(detailRow("Title", safeTitle(pane)), matchWrap());
+        panel.addView(detailRow("Pane", pane.id), matchWrap());
+        panel.addView(detailRow("Window / Tab", pane.windowId + " / " + pane.tabId), matchWrap());
+        panel.addView(detailRow("Workspace", emptyValue(pane.workspace)), matchWrap());
+        panel.addView(detailRow("Working directory", displayCwd(pane.cwd)), matchWrap());
+        panel.addView(detailRow("Active", pane.active ? "Yes" : "No"), matchWrap());
+
+        LinearLayout actions = new LinearLayout(this);
+        actions.setOrientation(LinearLayout.HORIZONTAL);
+        actions.setGravity(Gravity.CENTER_VERTICAL);
+        actions.setPadding(0, dp(16), 0, 0);
+        Button closeButton = compactButton("Close");
+        Button deleteButton = compactButton("Delete");
+        Button cloneButton = button("Clone");
+        deleteButton.setTextColor(0xFF991B1B);
+        deleteButton.setBackground(rounded(0xFFFEE2E2, dp(7), 0xFFFCA5A5));
+        actions.addView(closeButton, rowWeightParams(1, dp(42), 0, dp(6)));
+        actions.addView(deleteButton, rowWeightParams(1, dp(42), 0, dp(6)));
+        actions.addView(cloneButton, rowWeightParams(1, dp(42), 0, 0));
+        panel.addView(actions, matchWrap());
+
+        AlertDialog dialog = new AlertDialog.Builder(this).create();
+        dialog.setView(panel);
+        closeButton.setOnClickListener(v -> dialog.dismiss());
+        deleteButton.setOnClickListener(v -> {
+            dialog.dismiss();
+            deletePane(pane);
+        });
+        cloneButton.setOnClickListener(v -> {
+            dialog.dismiss();
+            clonePaneSession(pane);
+        });
+        dialog.show();
+    }
+
+    private TextView detailRow(String name, String value) {
+        TextView view = label(name + ": " + emptyValue(value));
+        view.setSingleLine(false);
+        return view;
+    }
+
+    private void deletePane(PaneInfo pane) {
+        setStatus("Deleting pane " + pane.id + "...");
+        request("DELETE", "/api/instances/" + instanceId + "/panes/" + pane.id, null, true, result -> {
+            if (!result.ok) {
+                setStatus("Delete failed: " + result.error);
+                return;
+            }
+            if (pane.id.equals(paneId)) {
+                stopPolling();
+                paneId = "";
+                snapshotHash = "";
+                lastSnapshotText = "";
+                terminalView.setText("Pane " + pane.id + " deleted.");
+            }
+            setStatus("Deleted pane " + pane.id);
+            loadSessions();
+        });
+    }
+
+    private void clonePaneSession(PaneInfo pane) {
+        String cwd = spawnCwdFromPane(pane);
+        spawnCodexSession(cwd, "Cloning pane " + pane.id + " @ " + displayCwd(cwd) + "...", "Clone failed: ");
     }
 
     private void loadSessionsThenSelect(String targetPaneId) {
@@ -1407,10 +1497,10 @@ public class MainActivity extends Activity {
         if (value.contains("failed") || value.contains("error") || value.contains("unavailable")) {
             return "Error";
         }
-        if (value.contains("sending") || value.contains("starting") || value.contains("loading")) {
+        if (value.contains("sending") || value.contains("starting") || value.contains("loading") || value.contains("deleting") || value.contains("cloning")) {
             return "Working";
         }
-        if (value.contains("sent") || value.contains("started") || value.contains("saved")) {
+        if (value.contains("sent") || value.contains("started") || value.contains("saved") || value.contains("deleted")) {
             return "Ready";
         }
         return "Offline";
@@ -1424,11 +1514,11 @@ public class MainActivity extends Activity {
         int fill = 0xFFE5E7EB;
         int stroke = 0xFFD1D5DB;
         int textColor = 0xFF374151;
-        if (value.contains("connected") || value.contains("configured") || value.contains("sent") || value.contains("started") || value.contains("saved") || value.startsWith("panes:") || value.contains(" selected")) {
+        if (value.contains("connected") || value.contains("configured") || value.contains("sent") || value.contains("started") || value.contains("saved") || value.contains("deleted") || value.startsWith("panes:") || value.contains(" selected")) {
             fill = 0xFFD1FAE5;
             stroke = 0xFF86EFAC;
             textColor = 0xFF065F46;
-        } else if (value.contains("connecting") || value.contains("loading") || value.contains("sending") || value.contains("starting") || value.contains("pane ")) {
+        } else if (value.contains("connecting") || value.contains("loading") || value.contains("sending") || value.contains("starting") || value.contains("deleting") || value.contains("cloning") || value.contains("pane ")) {
             fill = 0xFFDBEAFE;
             stroke = 0xFF93C5FD;
             textColor = 0xFF1D4ED8;
@@ -1495,6 +1585,41 @@ public class MainActivity extends Activity {
         return pane.cwd == null ? "" : pane.cwd;
     }
 
+    private String emptyValue(String value) {
+        return value == null || value.isEmpty() ? "-" : value;
+    }
+
+    private String displayCwd(String cwd) {
+        return emptyValue(spawnCwdFromValue(cwd));
+    }
+
+    private String spawnCwdFromPane(PaneInfo pane) {
+        String cwd = spawnCwdFromValue(pane.cwd);
+        return cwd.isEmpty() || "-".equals(cwd) ? defaultCwd : cwd;
+    }
+
+    private String spawnCwdFromValue(String cwd) {
+        if (cwd == null || cwd.isEmpty()) {
+            return "";
+        }
+        if (!cwd.startsWith("file:")) {
+            return cwd;
+        }
+        try {
+            Uri uri = Uri.parse(cwd);
+            String path = Uri.decode(uri.getPath());
+            if (path == null || path.isEmpty()) {
+                return cwd;
+            }
+            if (path.length() >= 3 && path.charAt(0) == '/' && path.charAt(2) == ':') {
+                path = path.substring(1);
+            }
+            return path.replace('/', '\\');
+        } catch (Exception ignored) {
+            return cwd;
+        }
+    }
+
     private void updateLastSent(String text, boolean enter) {
         if (lastSentView == null) {
             return;
@@ -1554,8 +1679,11 @@ public class MainActivity extends Activity {
 
     private static class PaneInfo {
         String id;
+        int windowId;
+        int tabId;
         String title;
         String cwd;
+        String workspace;
         boolean active;
     }
 

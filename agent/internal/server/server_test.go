@@ -22,6 +22,7 @@ type fakeWezTerm struct {
 	lastNoPaste bool
 	sendCalls   []sendCall
 	launched    bool
+	killed      bool
 }
 
 type sendCall struct {
@@ -102,6 +103,13 @@ func (fake *fakeWezTerm) SendText(ctx context.Context, class, paneID, text strin
 		text:    text,
 		noPaste: noPaste,
 	})
+	return nil
+}
+
+func (fake *fakeWezTerm) KillPane(ctx context.Context, class, paneID string) error {
+	fake.lastClass = class
+	fake.lastPaneID = paneID
+	fake.killed = true
 	return nil
 }
 
@@ -486,6 +494,22 @@ func TestSendTextAllowsEnterOnly(t *testing.T) {
 	}
 	if len(fake.sendCalls) != 1 || fake.sendCalls[0].text != "\r" {
 		t.Fatalf("send calls = %#v", fake.sendCalls)
+	}
+}
+
+func TestDeletePane(t *testing.T) {
+	srv, fake := testServer(t)
+	req := httptest.NewRequest(http.MethodDelete, "/api/instances/main/panes/3", nil)
+	req.Header.Set("Authorization", "Bearer secret")
+	rec := httptest.NewRecorder()
+
+	srv.Handler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d body = %s", rec.Code, rec.Body.String())
+	}
+	if !fake.killed || fake.lastClass != "easycodex" || fake.lastPaneID != "3" {
+		t.Fatalf("unexpected delete call: %#v", fake)
 	}
 }
 
