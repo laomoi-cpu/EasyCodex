@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"easycodex-agent/internal/config"
@@ -204,6 +205,7 @@ func TestSettingsSaveWritesConfigAndUpdatesAuth(t *testing.T) {
 		"root":"D:\\EasyCodex",
 		"token":"new-secret",
 		"regenerateTokenOnStart":true,
+		"publicBaseUrl":"http://100.64.1.2:8765",
 		"commandTimeoutSeconds":5,
 		"autoLaunch":["main"],
 		"closeLaunchedGuiOnExit":false,
@@ -223,7 +225,7 @@ func TestSettingsSaveWritesConfigAndUpdatesAuth(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load returned error: %v", err)
 	}
-	if !found || loaded.Token != "new-secret" || !loaded.RegenerateTokenOnStart {
+	if !found || loaded.Token != "new-secret" || !loaded.RegenerateTokenOnStart || loaded.PublicBaseURL != "http://100.64.1.2:8765" {
 		t.Fatalf("unexpected saved config: found=%v cfg=%#v", found, loaded)
 	}
 
@@ -233,6 +235,32 @@ func TestSettingsSaveWritesConfigAndUpdatesAuth(t *testing.T) {
 	srv.Handler().ServeHTTP(authRec, authReq)
 	if authRec.Code != http.StatusOK {
 		t.Fatalf("auth status = %d body = %s", authRec.Code, authRec.Body.String())
+	}
+}
+
+func TestPairingPageIncludesPublicBaseURL(t *testing.T) {
+	cfg := config.Defaults()
+	cfg.Listen = "127.0.0.1:0"
+	cfg.Root = `D:\EasyCodex`
+	cfg.Token = "secret"
+	cfg.PublicBaseURL = "http://100.64.1.2:8765"
+	fake := &fakeWezTerm{}
+	srv, err := New(cfg, fake, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest(http.MethodGet, "/pairing", nil)
+	req.RemoteAddr = "127.0.0.1:12345"
+	rec := httptest.NewRecorder()
+
+	srv.Handler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d body = %s", rec.Code, rec.Body.String())
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, "http://100.64.1.2:8765") || !strings.Contains(body, "Public") {
+		t.Fatalf("expected public pairing card: %s", body)
 	}
 }
 

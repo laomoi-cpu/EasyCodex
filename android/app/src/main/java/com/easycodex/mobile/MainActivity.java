@@ -25,7 +25,10 @@ import android.widget.EditText;
 import android.widget.HorizontalScrollView;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
+import android.widget.Spinner;
 import android.widget.TextView;
+import android.widget.ArrayAdapter;
+import android.widget.AdapterView;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -40,17 +43,22 @@ import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Date;
+import java.util.Locale;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 public class MainActivity extends Activity {
     private static final int REQUEST_CAMERA_SCAN = 41;
+    private static final int MAX_CONNECTION_HISTORY = 10;
 
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private final Handler main = new Handler(Looper.getMainLooper());
     private final List<PaneInfo> panes = new ArrayList<>();
+    private final List<ConnectionHistoryItem> connectionHistory = new ArrayList<>();
 
     private EditText baseUrlInput;
     private EditText tokenInput;
@@ -262,6 +270,7 @@ public class MainActivity extends Activity {
         baseUrl = trimTrailingSlash(baseUrlInput.getText().toString().trim());
         token = tokenInput.getText().toString().trim();
         saveSettings();
+        rememberConnection(baseUrl, token);
         setStatus("Saved");
     }
 
@@ -285,6 +294,14 @@ public class MainActivity extends Activity {
 
         EditText urlField = input("Agent URL", baseUrl);
         EditText tokenField = input("Token", token);
+        Spinner historySpinner = new Spinner(this);
+        List<String> historyLabels = connectionHistoryLabels();
+        ArrayAdapter<String> historyAdapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_item, historyLabels);
+        historyAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+        historySpinner.setAdapter(historyAdapter);
+        panel.addView(fieldLabel("Recent Connections"), matchWrap());
+        panel.addView(historySpinner, fixedHeight(dp(44)));
+        panel.addView(fieldSpacer(), fixedHeight(dp(10)));
         panel.addView(fieldLabel("Agent 地址"), matchWrap());
         panel.addView(urlField, fixedHeight(dp(44)));
         panel.addView(fieldSpacer(), fixedHeight(dp(10)));
@@ -305,6 +322,21 @@ public class MainActivity extends Activity {
 
         AlertDialog dialog = new AlertDialog.Builder(this).create();
         dialog.setView(panel);
+        historySpinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+            @Override
+            public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
+                if (position <= 0 || position > connectionHistory.size()) {
+                    return;
+                }
+                ConnectionHistoryItem item = connectionHistory.get(position - 1);
+                urlField.setText(item.baseUrl);
+                tokenField.setText(item.token);
+            }
+
+            @Override
+            public void onNothingSelected(AdapterView<?> parent) {
+            }
+        });
         scanButton.setOnClickListener(v -> {
             dialog.dismiss();
             startQrScan();
@@ -693,6 +725,7 @@ public class MainActivity extends Activity {
         baseUrlInput.setText(baseUrl);
         tokenInput.setText(token);
         saveSettings();
+        rememberConnection(baseUrl, token);
         setStatus("Paired " + baseUrl);
     }
     private void handleAutomationIntent(Intent intent) {
@@ -825,6 +858,7 @@ public class MainActivity extends Activity {
         SharedPreferences prefs = getSharedPreferences("easycodex", MODE_PRIVATE);
         baseUrl = prefs.getString("baseUrl", baseUrl);
         token = prefs.getString("token", token);
+        loadConnectionHistory(prefs);
     }
 
     private void saveSettings() {
@@ -833,6 +867,75 @@ public class MainActivity extends Activity {
                 .putString("baseUrl", baseUrl)
                 .putString("token", token)
                 .apply();
+    }
+
+    private void loadConnectionHistory(SharedPreferences prefs) {
+        connectionHistory.clear();
+        String raw = prefs.getString("connectionHistory", "[]");
+        try {
+            JSONArray items = new JSONArray(raw);
+            for (int i = 0; i < items.length() && connectionHistory.size() < MAX_CONNECTION_HISTORY; i++) {
+                JSONObject item = items.optJSONObject(i);
+                if (item == null) {
+                    continue;
+                }
+                String url = trimTrailingSlash(item.optString("baseUrl", "").trim());
+                String savedToken = item.optString("token", "").trim();
+                long lastUsedAt = item.optLong("lastUsedAt", 0);
+                if (!url.isEmpty()) {
+                    connectionHistory.add(new ConnectionHistoryItem(url, savedToken, lastUsedAt));
+                }
+            }
+        } catch (Exception ignored) {
+            connectionHistory.clear();
+        }
+    }
+
+    private void rememberConnection(String url, String savedToken) {
+        String normalizedUrl = trimTrailingSlash(url.trim());
+        if (normalizedUrl.isEmpty()) {
+            return;
+        }
+        for (int i = connectionHistory.size() - 1; i >= 0; i--) {
+            ConnectionHistoryItem item = connectionHistory.get(i);
+            if (item.baseUrl.equals(normalizedUrl)) {
+                connectionHistory.remove(i);
+            }
+        }
+        connectionHistory.add(0, new ConnectionHistoryItem(normalizedUrl, savedToken, System.currentTimeMillis()));
+        while (connectionHistory.size() > MAX_CONNECTION_HISTORY) {
+            connectionHistory.remove(connectionHistory.size() - 1);
+        }
+        saveConnectionHistory();
+    }
+
+    private void saveConnectionHistory() {
+        JSONArray items = new JSONArray();
+        for (ConnectionHistoryItem item : connectionHistory) {
+            JSONObject json = new JSONObject();
+            try {
+                json.put("baseUrl", item.baseUrl);
+                json.put("token", item.token);
+                json.put("lastUsedAt", item.lastUsedAt);
+                items.put(json);
+            } catch (Exception ignored) {
+            }
+        }
+        getSharedPreferences("easycodex", MODE_PRIVATE)
+                .edit()
+                .putString("connectionHistory", items.toString())
+                .apply();
+    }
+
+    private List<String> connectionHistoryLabels() {
+        List<String> labels = new ArrayList<>();
+        labels.add(connectionHistory.isEmpty() ? "No recent connections" : "Select recent connection");
+        SimpleDateFormat format = new SimpleDateFormat("MM-dd HH:mm", Locale.getDefault());
+        for (ConnectionHistoryItem item : connectionHistory) {
+            String time = item.lastUsedAt > 0 ? format.format(new Date(item.lastUsedAt)) : "unknown";
+            labels.add(item.baseUrl + "    " + time);
+        }
+        return labels;
     }
 
     private EditText input(String hint, String value) {
@@ -1109,5 +1212,17 @@ public class MainActivity extends Activity {
         String title;
         String cwd;
         boolean active;
+    }
+
+    private static class ConnectionHistoryItem {
+        String baseUrl;
+        String token;
+        long lastUsedAt;
+
+        ConnectionHistoryItem(String baseUrl, String token, long lastUsedAt) {
+            this.baseUrl = baseUrl;
+            this.token = token;
+            this.lastUsedAt = lastUsedAt;
+        }
     }
 }

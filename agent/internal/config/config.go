@@ -23,6 +23,7 @@ type Config struct {
 	Root                   string         `json:"root"`
 	Token                  string         `json:"token"`
 	RegenerateTokenOnStart bool           `json:"regenerateTokenOnStart"`
+	PublicBaseURL          string         `json:"publicBaseUrl"`
 	CommandTimeoutSeconds  int            `json:"commandTimeoutSeconds"`
 	AutoLaunch             []string       `json:"autoLaunch"`
 	CloseLaunchedGUIOnExit bool           `json:"closeLaunchedGuiOnExit"`
@@ -141,6 +142,7 @@ func Normalize(cfg *Config) {
 		cfg.Root = inferRoot()
 	}
 	cfg.Token = strings.TrimSpace(cfg.Token)
+	cfg.PublicBaseURL = strings.TrimRight(strings.TrimSpace(cfg.PublicBaseURL), "/")
 	for i := range cfg.AutoLaunch {
 		cfg.AutoLaunch[i] = strings.TrimSpace(cfg.AutoLaunch[i])
 	}
@@ -183,6 +185,9 @@ func Normalize(cfg *Config) {
 func Validate(cfg Config) error {
 	if cfg.Root == "" {
 		return errors.New("root is required")
+	}
+	if cfg.PublicBaseURL != "" && !strings.HasPrefix(cfg.PublicBaseURL, "http://") && !strings.HasPrefix(cfg.PublicBaseURL, "https://") {
+		return errors.New("public base url must start with http:// or https://")
 	}
 	if len(cfg.Instances) == 0 {
 		return errors.New("at least one instance is required")

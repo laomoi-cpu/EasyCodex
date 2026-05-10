@@ -53,6 +53,7 @@ func (s *Server) statusPage(w http.ResponseWriter, r *http.Request) {
     <dl class="kv">
       <dt>Listen</dt><dd>%s</dd>
       <dt>Local URL</dt><dd>%s</dd>
+      <dt>Public URL</dt><dd>%s</dd>
       <dt>LAN</dt><dd>%s</dd>
     </dl>
   </article>
@@ -68,6 +69,7 @@ func (s *Server) statusPage(w http.ResponseWriter, r *http.Request) {
 		html.EscapeString(timeNow()),
 		html.EscapeString(network.Listen),
 		html.EscapeString(network.LocalURL),
+		html.EscapeString(emptyDash(cfg.PublicBaseURL)),
 		html.EscapeString(strings.Join(network.LANURLs, ", ")),
 		html.EscapeString(s.configPath),
 		html.EscapeString(cfg.MobileDefaults.CWD),
@@ -100,7 +102,7 @@ func (s *Server) writePairingConsole(w http.ResponseWriter, baseURLs []string) {
   <div>
     <p class="eyebrow">Android Pairing</p>
     <h1>Scan once, then control Codex from your phone.</h1>
-    <p class="lead">Use the QR code that matches the same Wi-Fi network as the phone. If none work, open Settings and set listen to <code>0.0.0.0:8765</code>, then allow Windows Firewall.</p>
+    <p class="lead">Use the QR code that matches the phone network. For Tailscale or another reachable public address, fill Public Base URL in Settings and scan the Public QR.</p>
   </div>
   <img class="hero-mark" src="/assets/easycodex.svg" alt="">
 </section>
@@ -162,6 +164,7 @@ func settingsPageHTML() string {
     <div class="field-grid">
       <label><span>Listen address</span><input id="listen" autocomplete="off" placeholder="0.0.0.0:8765"></label>
       <label><span>API token</span><input id="token" autocomplete="off"></label>
+      <label><span>Public Base URL</span><input id="publicBaseUrl" autocomplete="off" placeholder="http://100.x.y.z:8765"></label>
       <label><span>EasyCodex root</span><input id="root" autocomplete="off"></label>
       <label><span>Command timeout seconds</span><input id="timeout" type="number" min="1" max="120"></label>
     </div>
@@ -224,7 +227,7 @@ function setState(text, kind='muted'){ const el=$('saveState'); el.className='st
 function lines(value){ return value.split(/\r?\n/).map(x=>x.trim()).filter(Boolean); }
 function fill(){
   const c=currentConfig;
-  $('listen').value=c.listen||''; $('token').value=c.token||''; $('root').value=c.root||'';
+  $('listen').value=c.listen||''; $('token').value=c.token||''; $('publicBaseUrl').value=c.publicBaseUrl||''; $('root').value=c.root||'';
   $('timeout').value=c.commandTimeoutSeconds||5; $('regenToken').checked=!!c.regenerateTokenOnStart; $('closeGui').checked=!!c.closeLaunchedGuiOnExit;
   $('defaultCwd').value=(c.mobileDefaults&&c.mobileDefaults.cwd)||'';
   $('defaultCommand').value=((c.mobileDefaults&&c.mobileDefaults.command)||[]).join('\n');
@@ -266,7 +269,7 @@ function collect(){
     class: row.querySelector('[data-field=class]').value.trim()
   }));
   return {
-    listen:$('listen').value.trim(), token:$('token').value.trim(), root:$('root').value.trim(),
+    listen:$('listen').value.trim(), token:$('token').value.trim(), publicBaseUrl:$('publicBaseUrl').value.trim(), root:$('root').value.trim(),
     commandTimeoutSeconds:parseInt($('timeout').value,10)||5,
     regenerateTokenOnStart:$('regenToken').checked,
     closeLaunchedGuiOnExit:$('closeGui').checked,
@@ -310,7 +313,17 @@ func networkBadge(baseURL string) string {
 	if strings.Contains(baseURL, "127.0.0.1") || strings.Contains(baseURL, "localhost") {
 		return "Local PC"
 	}
+	if strings.HasPrefix(baseURL, "https://") || strings.Contains(baseURL, ".ts.net") || strings.Contains(baseURL, "100.") {
+		return "Public"
+	}
 	return "Wi-Fi / LAN"
+}
+
+func emptyDash(value string) string {
+	if strings.TrimSpace(value) == "" {
+		return "-"
+	}
+	return value
 }
 
 func timeNow() string {

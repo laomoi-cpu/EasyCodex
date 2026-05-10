@@ -3,6 +3,7 @@
     "root":  "",
     "token":  "",
     "regenerateTokenOnStart":  false,
+    "publicBaseUrl":  "",
     "commandTimeoutSeconds":  5,
     "autoLaunch":  [
                        "main"

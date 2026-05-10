@@ -241,6 +241,9 @@ func (s *Server) pairingPage(w http.ResponseWriter, r *http.Request) {
 	cfg := s.configSnapshot()
 	network := netinfo.Inspect(cfg.Listen)
 	baseURLs := append([]string(nil), network.LANURLs...)
+	if cfg.PublicBaseURL != "" {
+		baseURLs = append(baseURLs, cfg.PublicBaseURL)
+	}
 	if len(baseURLs) == 0 {
 		baseURLs = append(baseURLs, network.LocalURL)
 	} else {
@@ -290,7 +293,7 @@ func (s *Server) mobilePair(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) mobilePairCode() string {
 	cfg := s.configSnapshot()
-	sum := sha256.Sum256([]byte(cfg.Token + "|" + cfg.Listen))
+	sum := sha256.Sum256([]byte(cfg.Token + "|" + cfg.Listen + "|" + cfg.PublicBaseURL))
 	return hex.EncodeToString(sum[:])[:12]
 }
 
@@ -653,6 +656,9 @@ func changedRestartFields(before, after config.Config) []string {
 	}
 	if before.CommandTimeoutSeconds != after.CommandTimeoutSeconds {
 		fields = append(fields, "commandTimeoutSeconds")
+	}
+	if before.PublicBaseURL != after.PublicBaseURL {
+		fields = append(fields, "publicBaseUrl")
 	}
 	if before.RegenerateTokenOnStart != after.RegenerateTokenOnStart {
 		fields = append(fields, "regenerateTokenOnStart")

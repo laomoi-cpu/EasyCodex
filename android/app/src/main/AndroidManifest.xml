@@ -5,7 +5,9 @@
 
     <application
         android:allowBackup="false"
+        android:icon="@drawable/easycodex_launcher"
         android:label="EasyCodex"
+        android:roundIcon="@drawable/easycodex_launcher"
         android:supportsRtl="true"
         android:theme="@style/AppTheme"
         android:usesCleartextTraffic="true">
