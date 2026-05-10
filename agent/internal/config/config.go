@@ -101,7 +101,7 @@ func Defaults() Config {
 		MobileDefaults: MobileDefaults{
 			InstanceID: "main",
 			CWD:        `D:\mgame`,
-			Command:    []string{"cmd.exe", "/k", `cd /d D:\mgame && codex --dangerously-bypass-approvals-and-sandbox`},
+			Command:    defaultMobileCommand(),
 		},
 	}
 	Normalize(&cfg)
@@ -125,11 +125,26 @@ func Normalize(cfg *Config) {
 	}
 	cfg.MobileDefaults.InstanceID = strings.TrimSpace(cfg.MobileDefaults.InstanceID)
 	cfg.MobileDefaults.CWD = strings.TrimSpace(cfg.MobileDefaults.CWD)
+	if cfg.MobileDefaults.CWD == "" {
+		cfg.MobileDefaults.CWD = `D:\mgame`
+	}
 	for i := range cfg.MobileDefaults.Command {
 		cfg.MobileDefaults.Command[i] = strings.TrimSpace(cfg.MobileDefaults.Command[i])
 	}
-	if cfg.MobileDefaults.InstanceID == "" && len(cfg.Instances) > 0 {
-		cfg.MobileDefaults.InstanceID = cfg.Instances[0].ID
+	if len(cfg.MobileDefaults.Command) == 0 {
+		cfg.MobileDefaults.Command = defaultMobileCommand()
+	}
+	if len(cfg.Instances) > 0 {
+		defaultInstanceFound := cfg.MobileDefaults.InstanceID == ""
+		for _, instance := range cfg.Instances {
+			if instance.ID == cfg.MobileDefaults.InstanceID {
+				defaultInstanceFound = true
+				break
+			}
+		}
+		if !defaultInstanceFound {
+			cfg.MobileDefaults.InstanceID = cfg.Instances[0].ID
+		}
 	}
 	if cfg.Listen == "" {
 		cfg.Listen = DefaultListen
@@ -179,6 +194,9 @@ func Validate(cfg Config) error {
 	return nil
 }
 
+func defaultMobileCommand() []string {
+	return []string{"cmd.exe", "/k", `cd /d D:\mgame && codex --dangerously-bypass-approvals-and-sandbox`}
+}
 func (cfg Config) CommandTimeout() time.Duration {
 	if cfg.CommandTimeoutSeconds <= 0 {
 		return DefaultCommandTimeout

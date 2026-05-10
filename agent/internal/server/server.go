@@ -11,6 +11,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/url"
 	"sort"
 	"strconv"
 	"strings"
@@ -143,6 +144,7 @@ type textQuery struct {
 }
 
 func New(cfg config.Config, wezterm WezTerm, logger *slog.Logger) (*Server, error) {
+	config.Normalize(&cfg)
 	if err := config.Validate(cfg); err != nil {
 		return nil, err
 	}
@@ -164,6 +166,8 @@ func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/health", s.health)
 	mux.HandleFunc("GET /api/pairing", s.pairing)
+	mux.HandleFunc("GET /pairing", s.pairingPage)
+	mux.HandleFunc("GET /api/mobile-pair", s.mobilePair)
 	mux.HandleFunc("GET /api/config", s.auth(s.appConfig))
 	mux.HandleFunc("GET /api/instances", s.auth(s.instancesList))
 	mux.HandleFunc("POST /api/instances/{instanceID}/launch", s.auth(s.launch))
@@ -201,6 +205,51 @@ func (s *Server) pairing(w http.ResponseWriter, r *http.Request) {
 		Defaults:    s.mobileDefaultsResponse(),
 		GeneratedAt: time.Now().Format(time.RFC3339Nano),
 	})
+}
+
+func (s *Server) pairingPage(w http.ResponseWriter, r *http.Request) {
+	if !isLocalRequest(r) {
+		writeError(w, http.StatusForbidden, errors.New("pairing page is only available from localhost"))
+		return
+	}
+	network := netinfo.Inspect(s.cfg.Listen)
+	baseURL := network.LocalURL
+	if len(network.LANURLs) > 0 {
+		baseURL = network.LANURLs[0]
+	}
+	pairURL := baseURL + "/api/mobile-pair?code=" + url.QueryEscape(s.mobilePairCode())
+	deepLink := "easycodex://pair?url=" + url.QueryEscape(pairURL)
+	qrURL := "https://api.qrserver.com/v1/create-qr-code/?size=320x320&data=" + url.QueryEscape(deepLink)
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	fmt.Fprintf(w, `<!doctype html>
+<html><head><meta charset="utf-8"><title>EasyCodex Pairing</title>
+<style>body{font-family:Segoe UI,Arial,sans-serif;margin:32px;background:#f6f7f9;color:#111827}.panel{max-width:560px;background:white;border:1px solid #d1d5db;border-radius:8px;padding:24px}.qr{width:320px;height:320px;border:1px solid #e5e7eb}.label{font-size:12px;color:#6b7280;margin-top:18px}.value{font-family:Consolas,monospace;word-break:break-all;background:#f3f4f6;padding:10px;border-radius:6px}.warn{color:#92400e;background:#fffbeb;border:1px solid #f59e0b;padding:10px;border-radius:6px}</style>
+</head><body><div class="panel"><h1>EasyCodex Pairing</h1><p>Use the Android app to scan this QR code.</p><img class="qr" src="%s" alt="Pairing QR"><div class="label">Phone Base URL</div><div class="value">%s</div><div class="label">Pair Link</div><div class="value">%s</div><p class="warn">If the phone cannot connect, set listen to 0.0.0.0:8765 and allow the Windows firewall.</p></div></body></html>`, qrURL, baseURL, deepLink)
+}
+
+func (s *Server) mobilePair(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Query().Get("code") != s.mobilePairCode() {
+		writeError(w, http.StatusForbidden, errors.New("invalid pairing code"))
+		return
+	}
+	baseURL := r.URL.Query().Get("baseUrl")
+	if baseURL == "" {
+		scheme := "http"
+		if r.TLS != nil {
+			scheme = "https"
+		}
+		baseURL = scheme + "://" + r.Host
+	}
+	writeOK(w, http.StatusOK, map[string]any{
+		"baseUrl":  baseURL,
+		"token":    s.cfg.Token,
+		"defaults": s.mobileDefaultsResponse(),
+	})
+}
+
+func (s *Server) mobilePairCode() string {
+	sum := sha256.Sum256([]byte(s.cfg.Token + "|" + s.cfg.Listen))
+	return hex.EncodeToString(sum[:])[:12]
 }
 
 func (s *Server) appConfig(w http.ResponseWriter, r *http.Request) {

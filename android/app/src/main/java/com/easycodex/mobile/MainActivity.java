@@ -5,6 +5,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.graphics.Typeface;
+import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -71,6 +72,7 @@ public class MainActivity extends Activity {
         loadSettings();
         ensureDefaultCommand();
         buildUi();
+        handlePairingIntent(getIntent());
         handleAutomationIntent(getIntent());
     }
 
@@ -78,6 +80,7 @@ public class MainActivity extends Activity {
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
         setIntent(intent);
+        handlePairingIntent(intent);
         handleAutomationIntent(intent);
     }
 
@@ -458,6 +461,67 @@ public class MainActivity extends Activity {
         }
     }
 
+    private void handlePairingIntent(Intent intent) {
+        if (intent == null || intent.getData() == null) {
+            return;
+        }
+        Uri uri = intent.getData();
+        if (!"easycodex".equals(uri.getScheme()) || !"pair".equals(uri.getHost())) {
+            return;
+        }
+        String pairUrl = uri.getQueryParameter("url");
+        if (pairUrl != null && !pairUrl.isEmpty()) {
+            setStatus("Pairing from PC...");
+            requestAbsolute(pairUrl, result -> {
+                if (!result.ok) {
+                    setStatus("Pairing failed: " + result.error);
+                    return;
+                }
+                applyPairingPayload(result.data);
+                connect();
+            });
+            return;
+        }
+        String data = uri.getQueryParameter("data");
+        if (data == null || data.isEmpty()) {
+            setStatus("Pairing failed: missing data");
+            return;
+        }
+        try {
+            String json = new String(Base64.decode(data, Base64.DEFAULT), StandardCharsets.UTF_8);
+            applyPairingPayload(new JSONObject(json));
+            connect();
+        } catch (Exception ex) {
+            setStatus("Pairing failed: " + ex.getMessage());
+        }
+    }
+
+    private void applyPairingPayload(JSONObject payload) {
+        baseUrl = trimTrailingSlash(payload.optString("baseUrl", baseUrl));
+        token = payload.optString("token", token);
+        JSONObject defaults = payload.optJSONObject("defaults");
+        if (defaults != null) {
+            defaultInstanceId = defaults.optString("instanceId", defaultInstanceId);
+            defaultCwd = defaults.optString("cwd", defaultCwd);
+            JSONArray command = defaults.optJSONArray("command");
+            if (command != null && command.length() > 0) {
+                defaultCommand.clear();
+                for (int i = 0; i < command.length(); i++) {
+                    String part = command.optString(i);
+                    if (!part.isEmpty()) {
+                        defaultCommand.add(part);
+                    }
+                }
+            }
+            if (!defaultInstanceId.isEmpty()) {
+                instanceId = defaultInstanceId;
+            }
+        }
+        baseUrlInput.setText(baseUrl);
+        tokenInput.setText(token);
+        saveSettings();
+        setStatus("Paired " + baseUrl);
+    }
     private void handleAutomationIntent(Intent intent) {
         if (intent == null || (!intent.hasExtra("prompt") && !intent.hasExtra("promptBase64"))) {
             return;
@@ -478,6 +542,41 @@ public class MainActivity extends Activity {
         main.postDelayed(() -> sendCommand(enter), 400);
     }
 
+    private void requestAbsolute(String urlText, Callback callback) {
+        executor.execute(() -> {
+            Result result = new Result();
+            HttpURLConnection conn = null;
+            try {
+                URL url = new URL(urlText);
+                conn = (HttpURLConnection) url.openConnection();
+                conn.setRequestMethod("GET");
+                conn.setConnectTimeout(5000);
+                conn.setReadTimeout(10000);
+                conn.setRequestProperty("Accept", "application/json");
+                int code = conn.getResponseCode();
+                String text = readAll(code >= 400 ? conn.getErrorStream() : conn.getInputStream());
+                JSONObject json = new JSONObject(text.isEmpty() ? "{}" : text);
+                result.ok = code >= 200 && code < 300 && json.optBoolean("ok", true);
+                result.data = json.optJSONObject("data");
+                if (result.data == null) {
+                    result.data = new JSONObject();
+                }
+                result.error = json.optString("error");
+                if (!result.ok && result.error.isEmpty()) {
+                    result.error = "HTTP " + code;
+                }
+            } catch (Exception ex) {
+                result.ok = false;
+                result.data = new JSONObject();
+                result.error = ex.getMessage();
+            } finally {
+                if (conn != null) {
+                    conn.disconnect();
+                }
+            }
+            main.post(() -> callback.done(result));
+        });
+    }
     private void request(String method, String path, JSONObject body, boolean auth, Callback callback) {
         executor.execute(() -> {
             Result result = new Result();

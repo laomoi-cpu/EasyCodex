@@ -8,8 +8,10 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"sync"
 	"syscall"
 	"time"
@@ -86,6 +88,7 @@ func main() {
 	for _, instance := range cfg.Instances {
 		fmt.Printf("Instance: %s (%s) class=%s\n", instance.ID, instance.Name, instance.Class)
 	}
+	startTrayHelper(logger, cfg, displayConfigPath)
 	autoLaunchInstances(context.Background(), logger, tracker, cfg)
 	defer cleanupLaunchedGUI(logger, tracker, cfg)
 
@@ -113,6 +116,26 @@ func main() {
 			os.Exit(1)
 		}
 	}
+}
+
+func startTrayHelper(logger *slog.Logger, cfg config.Config, configPath string) {
+	if runtime.GOOS != "windows" {
+		return
+	}
+	scriptPath := filepath.Join(cfg.Root, "agent", "tray.ps1")
+	if _, err := os.Stat(scriptPath); err != nil {
+		logger.Warn("tray helper not found", "path", scriptPath, "error", err)
+		return
+	}
+	pairingURL := netinfo.Inspect(cfg.Listen).LocalURL + "/pairing"
+	cmd := exec.Command("powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-WindowStyle", "Hidden", "-File", scriptPath, "-PairingUrl", pairingURL, "-ConfigPath", configPath)
+	cmd.Stdout = nil
+	cmd.Stderr = nil
+	if err := cmd.Start(); err != nil {
+		logger.Warn("failed to start tray helper", "error", err)
+		return
+	}
+	_ = cmd.Process.Release()
 }
 
 type trackedWezTerm struct {
