@@ -64,8 +64,11 @@ func (cli CLI) SendText(ctx context.Context, class, paneID, text string, noPaste
 	return err
 }
 
-func (cli CLI) Spawn(ctx context.Context, class, cwd string, newWindow bool, command []string) (string, error) {
+func (cli CLI) Spawn(ctx context.Context, class, paneID, cwd string, newWindow bool, command []string) (string, error) {
 	args := []string{"spawn"}
+	if paneID != "" {
+		args = append(args, "--pane-id", paneID)
+	}
 	if cwd != "" {
 		args = append(args, "--cwd", cwd)
 	}

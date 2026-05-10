@@ -37,7 +37,48 @@ func (fake *fakeWezTerm) Launch(ctx context.Context, class string) (int, error) 
 
 func (fake *fakeWezTerm) List(ctx context.Context, class string) (json.RawMessage, error) {
 	fake.lastClass = class
-	return json.RawMessage(`[{"window_id":1,"tabs":[{"tab_id":2,"panes":[{"pane_id":3}]}]}]`), nil
+	return json.RawMessage(`[
+		{
+			"window_id": 1,
+			"window_title": "main window",
+			"tab_id": 2,
+			"tab_title": "work",
+			"pane_id": 3,
+			"title": "cmd.exe",
+			"cwd": "file:///D:/mgame/",
+			"workspace": "default",
+			"is_active": true,
+			"is_zoomed": false,
+			"cursor_x": 1,
+			"cursor_y": 2,
+			"cursor_shape": "Default",
+			"cursor_visibility": "Visible",
+			"left_col": 0,
+			"top_row": 0,
+			"tty_name": null,
+			"size": {"cols": 80, "rows": 24}
+		},
+		{
+			"window_id": 1,
+			"window_title": "main window",
+			"tab_id": 2,
+			"tab_title": "work",
+			"pane_id": 4,
+			"title": "codex",
+			"cwd": "file:///D:/mgame/",
+			"workspace": "default",
+			"is_active": false,
+			"is_zoomed": false,
+			"cursor_x": 3,
+			"cursor_y": 4,
+			"cursor_shape": "Default",
+			"cursor_visibility": "Visible",
+			"left_col": 0,
+			"top_row": 0,
+			"tty_name": null,
+			"size": {"cols": 80, "rows": 24}
+		}
+	]`), nil
 }
 
 func (fake *fakeWezTerm) GetText(ctx context.Context, class, paneID string, lines int, escapes bool) (string, error) {
@@ -62,8 +103,9 @@ func (fake *fakeWezTerm) SendText(ctx context.Context, class, paneID, text strin
 	return nil
 }
 
-func (fake *fakeWezTerm) Spawn(ctx context.Context, class, cwd string, newWindow bool, command []string) (string, error) {
+func (fake *fakeWezTerm) Spawn(ctx context.Context, class, paneID, cwd string, newWindow bool, command []string) (string, error) {
 	fake.lastClass = class
+	fake.lastPaneID = paneID
 	return "9", nil
 }
 
@@ -122,6 +164,26 @@ func TestSessionsReturnsWezTermPayload(t *testing.T) {
 	}
 	if fake.lastClass != "easycodex" {
 		t.Fatalf("class = %q", fake.lastClass)
+	}
+	var payload struct {
+		OK   bool `json:"ok"`
+		Data struct {
+			Instance string          `json:"instance"`
+			Windows  []windowSession `json:"windows"`
+			Panes    []paneSession   `json:"panes"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("invalid json: %v", err)
+	}
+	if !payload.OK {
+		t.Fatalf("expected ok response: %s", rec.Body.String())
+	}
+	if payload.Data.Instance != "main" || len(payload.Data.Windows) != 1 || len(payload.Data.Windows[0].Tabs) != 1 {
+		t.Fatalf("unexpected session tree: %#v", payload.Data)
+	}
+	if len(payload.Data.Panes) != 2 || payload.Data.Panes[0].PaneID != "3" || payload.Data.Panes[1].PaneID != "4" {
+		t.Fatalf("unexpected panes: %#v", payload.Data.Panes)
 	}
 }
 
@@ -234,5 +296,37 @@ func TestSendTextAllowsEnterOnly(t *testing.T) {
 	}
 	if len(fake.sendCalls) != 1 || fake.sendCalls[0].text != "\r" {
 		t.Fatalf("send calls = %#v", fake.sendCalls)
+	}
+}
+
+func TestSpawnUsesActivePaneWhenPaneIDIsOmitted(t *testing.T) {
+	srv, fake := testServer(t)
+	req := httptest.NewRequest(http.MethodPost, "/api/instances/main/spawn", bytes.NewBufferString(`{}`))
+	req.Header.Set("Authorization", "Bearer secret")
+	rec := httptest.NewRecorder()
+
+	srv.Handler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d body = %s", rec.Code, rec.Body.String())
+	}
+	if fake.lastPaneID != "3" {
+		t.Fatalf("expected active pane id 3, got %q", fake.lastPaneID)
+	}
+}
+
+func TestSpawnUsesExplicitPaneID(t *testing.T) {
+	srv, fake := testServer(t)
+	req := httptest.NewRequest(http.MethodPost, "/api/instances/main/spawn", bytes.NewBufferString(`{"paneId":"4"}`))
+	req.Header.Set("Authorization", "Bearer secret")
+	rec := httptest.NewRecorder()
+
+	srv.Handler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d body = %s", rec.Code, rec.Body.String())
+	}
+	if fake.lastPaneID != "4" {
+		t.Fatalf("expected explicit pane id 4, got %q", fake.lastPaneID)
 	}
 }

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -20,7 +21,7 @@ type WezTerm interface {
 	List(ctx context.Context, class string) (json.RawMessage, error)
 	GetText(ctx context.Context, class, paneID string, lines int, escapes bool) (string, error)
 	SendText(ctx context.Context, class, paneID, text string, noPaste bool) error
-	Spawn(ctx context.Context, class, cwd string, newWindow bool, command []string) (string, error)
+	Spawn(ctx context.Context, class, paneID, cwd string, newWindow bool, command []string) (string, error)
 }
 
 type Server struct {
@@ -30,12 +31,86 @@ type Server struct {
 	logger    *slog.Logger
 }
 
+type apiResponse struct {
+	OK    bool   `json:"ok"`
+	Data  any    `json:"data,omitempty"`
+	Error string `json:"error,omitempty"`
+}
+
+type instanceResponse struct {
+	ID    string `json:"id"`
+	Name  string `json:"name"`
+	Class string `json:"class"`
+}
+
 type sendTextRequest struct {
 	Text             string `json:"text"`
 	TextBase64       string `json:"textBase64"`
 	NoPaste          bool   `json:"noPaste"`
 	Enter            bool   `json:"enter"`
 	EnterDelayMillis int    `json:"enterDelayMillis"`
+}
+
+type weztermPane struct {
+	WindowID         int             `json:"window_id"`
+	WindowTitle      string          `json:"window_title"`
+	TabID            int             `json:"tab_id"`
+	TabTitle         string          `json:"tab_title"`
+	PaneID           int             `json:"pane_id"`
+	Title            string          `json:"title"`
+	CWD              string          `json:"cwd"`
+	Workspace        string          `json:"workspace"`
+	IsActive         bool            `json:"is_active"`
+	IsZoomed         bool            `json:"is_zoomed"`
+	CursorX          int             `json:"cursor_x"`
+	CursorY          int             `json:"cursor_y"`
+	CursorShape      string          `json:"cursor_shape"`
+	CursorVisibility string          `json:"cursor_visibility"`
+	LeftCol          int             `json:"left_col"`
+	TopRow           int             `json:"top_row"`
+	TTYName          *string         `json:"tty_name"`
+	Size             json.RawMessage `json:"size"`
+}
+
+type sessionTree struct {
+	Instance string          `json:"instance"`
+	Windows  []windowSession `json:"windows"`
+	Panes    []paneSession   `json:"panes"`
+}
+
+type windowSession struct {
+	WindowID  int          `json:"windowId"`
+	Title     string       `json:"title"`
+	Workspace string       `json:"workspace"`
+	IsActive  bool         `json:"isActive"`
+	Tabs      []tabSession `json:"tabs"`
+}
+
+type tabSession struct {
+	TabID    int           `json:"tabId"`
+	Title    string        `json:"title"`
+	IsActive bool          `json:"isActive"`
+	IsZoomed bool          `json:"isZoomed"`
+	Panes    []paneSession `json:"panes"`
+}
+
+type paneSession struct {
+	PaneID           string          `json:"paneId"`
+	WindowID         int             `json:"windowId"`
+	TabID            int             `json:"tabId"`
+	Title            string          `json:"title"`
+	CWD              string          `json:"cwd"`
+	Workspace        string          `json:"workspace"`
+	IsActive         bool            `json:"isActive"`
+	IsZoomed         bool            `json:"isZoomed"`
+	CursorX          int             `json:"cursorX"`
+	CursorY          int             `json:"cursorY"`
+	CursorShape      string          `json:"cursorShape"`
+	CursorVisibility string          `json:"cursorVisibility"`
+	LeftCol          int             `json:"leftCol"`
+	TopRow           int             `json:"topRow"`
+	TTYName          *string         `json:"ttyName"`
+	Size             json.RawMessage `json:"size,omitempty"`
 }
 
 func New(cfg config.Config, wezterm WezTerm, logger *slog.Logger) (*Server, error) {
@@ -69,27 +144,19 @@ func (s *Server) Handler() http.Handler {
 }
 
 func (s *Server) health(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]any{
-		"ok":      true,
-		"service": "easycodex-agent",
-	})
+	writeOK(w, http.StatusOK, map[string]any{"service": "easycodex-agent"})
 }
 
 func (s *Server) instancesList(w http.ResponseWriter, r *http.Request) {
-	type item struct {
-		ID    string `json:"id"`
-		Name  string `json:"name"`
-		Class string `json:"class"`
-	}
-	items := make([]item, 0, len(s.cfg.Instances))
+	items := make([]instanceResponse, 0, len(s.cfg.Instances))
 	for _, instance := range s.cfg.Instances {
-		items = append(items, item{
+		items = append(items, instanceResponse{
 			ID:    instance.ID,
 			Name:  instance.Name,
 			Class: instance.Class,
 		})
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"instances": items})
+	writeOK(w, http.StatusOK, map[string]any{"instances": items})
 }
 
 func (s *Server) launch(w http.ResponseWriter, r *http.Request) {
@@ -102,8 +169,7 @@ func (s *Server) launch(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadGateway, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{
-		"ok":       true,
+	writeOK(w, http.StatusOK, map[string]any{
 		"instance": instance.ID,
 		"pid":      pid,
 	})
@@ -120,15 +186,12 @@ func (s *Server) sessions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var payload any
-	if err := json.Unmarshal(data, &payload); err != nil {
+	tree, err := normalizeSessions(instance.ID, data)
+	if err != nil {
 		writeError(w, http.StatusBadGateway, fmt.Errorf("invalid wezterm list json: %w", err))
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{
-		"instance": instance.ID,
-		"sessions": payload,
-	})
+	writeOK(w, http.StatusOK, tree)
 }
 
 func (s *Server) paneText(w http.ResponseWriter, r *http.Request) {
@@ -158,7 +221,7 @@ func (s *Server) paneText(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadGateway, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{
+	writeOK(w, http.StatusOK, map[string]any{
 		"instance": instance.ID,
 		"paneId":   paneID,
 		"text":     text,
@@ -209,7 +272,7 @@ func (s *Server) sendText(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+	writeOK(w, http.StatusOK, map[string]any{"sent": true})
 }
 
 func (s *Server) spawn(w http.ResponseWriter, r *http.Request) {
@@ -219,6 +282,7 @@ func (s *Server) spawn(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var body struct {
+		PaneID    string   `json:"paneId"`
 		CWD       string   `json:"cwd"`
 		NewWindow bool     `json:"newWindow"`
 		Command   []string `json:"command"`
@@ -227,15 +291,43 @@ func (s *Server) spawn(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
-	paneID, err := s.wezterm.Spawn(r.Context(), instance.Class, body.CWD, body.NewWindow, body.Command)
+	targetPaneID := body.PaneID
+	if targetPaneID == "" && !body.NewWindow {
+		var err error
+		targetPaneID, err = s.activePaneID(r.Context(), instance)
+		if err != nil {
+			writeError(w, http.StatusBadGateway, err)
+			return
+		}
+	}
+	paneID, err := s.wezterm.Spawn(r.Context(), instance.Class, targetPaneID, body.CWD, body.NewWindow, body.Command)
 	if err != nil {
 		writeError(w, http.StatusBadGateway, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{
-		"ok":     true,
+	writeOK(w, http.StatusOK, map[string]any{
 		"paneId": paneID,
 	})
+}
+
+func (s *Server) activePaneID(ctx context.Context, instance config.Instance) (string, error) {
+	data, err := s.wezterm.List(ctx, instance.Class)
+	if err != nil {
+		return "", err
+	}
+	tree, err := normalizeSessions(instance.ID, data)
+	if err != nil {
+		return "", err
+	}
+	for _, pane := range tree.Panes {
+		if pane.IsActive {
+			return pane.PaneID, nil
+		}
+	}
+	if len(tree.Panes) > 0 {
+		return tree.Panes[0].PaneID, nil
+	}
+	return "", errors.New("no panes available for spawn")
 }
 
 func (s *Server) instance(w http.ResponseWriter, r *http.Request) (config.Instance, bool) {
@@ -279,11 +371,12 @@ func writeJSON(w http.ResponseWriter, status int, payload any) {
 	_ = json.NewEncoder(w).Encode(payload)
 }
 
+func writeOK(w http.ResponseWriter, status int, data any) {
+	writeJSON(w, status, apiResponse{OK: true, Data: data})
+}
+
 func writeError(w http.ResponseWriter, status int, err error) {
-	writeJSON(w, status, map[string]any{
-		"ok":    false,
-		"error": err.Error(),
-	})
+	writeJSON(w, status, apiResponse{OK: false, Error: err.Error()})
 }
 
 func validID(value string) bool {
@@ -332,4 +425,123 @@ func sendEnterDelay(value int) time.Duration {
 		value = 2000
 	}
 	return time.Duration(value) * time.Millisecond
+}
+
+func normalizeSessions(instanceID string, data json.RawMessage) (sessionTree, error) {
+	var rawPanes []weztermPane
+	if err := json.Unmarshal(data, &rawPanes); err != nil {
+		return sessionTree{}, err
+	}
+
+	tree := sessionTree{
+		Instance: instanceID,
+		Windows:  []windowSession{},
+		Panes:    make([]paneSession, 0, len(rawPanes)),
+	}
+
+	windowIndex := map[int]int{}
+	tabIndex := map[int]map[int]int{}
+	for _, raw := range rawPanes {
+		pane := paneFromWezTerm(raw)
+		tree.Panes = append(tree.Panes, pane)
+
+		wIndex, ok := windowIndex[raw.WindowID]
+		if !ok {
+			windowIndex[raw.WindowID] = len(tree.Windows)
+			tabIndex[raw.WindowID] = map[int]int{}
+			tree.Windows = append(tree.Windows, windowSession{
+				WindowID:  raw.WindowID,
+				Title:     raw.WindowTitle,
+				Workspace: raw.Workspace,
+				IsActive:  raw.IsActive,
+				Tabs:      []tabSession{},
+			})
+			wIndex = len(tree.Windows) - 1
+		}
+		if raw.IsActive {
+			tree.Windows[wIndex].IsActive = true
+		}
+		if tree.Windows[wIndex].Title == "" {
+			tree.Windows[wIndex].Title = raw.WindowTitle
+		}
+
+		tIndex, ok := tabIndex[raw.WindowID][raw.TabID]
+		if !ok {
+			tabIndex[raw.WindowID][raw.TabID] = len(tree.Windows[wIndex].Tabs)
+			tree.Windows[wIndex].Tabs = append(tree.Windows[wIndex].Tabs, tabSession{
+				TabID:    raw.TabID,
+				Title:    raw.TabTitle,
+				IsActive: raw.IsActive,
+				IsZoomed: raw.IsZoomed,
+				Panes:    []paneSession{},
+			})
+			tIndex = len(tree.Windows[wIndex].Tabs) - 1
+		}
+		tab := &tree.Windows[wIndex].Tabs[tIndex]
+		if raw.IsActive {
+			tab.IsActive = true
+		}
+		if raw.IsZoomed {
+			tab.IsZoomed = true
+		}
+		if tab.Title == "" {
+			tab.Title = raw.TabTitle
+		}
+		tab.Panes = append(tab.Panes, pane)
+	}
+
+	sortSessionTree(&tree)
+	return tree, nil
+}
+
+func paneFromWezTerm(raw weztermPane) paneSession {
+	return paneSession{
+		PaneID:           strconv.Itoa(raw.PaneID),
+		WindowID:         raw.WindowID,
+		TabID:            raw.TabID,
+		Title:            raw.Title,
+		CWD:              raw.CWD,
+		Workspace:        raw.Workspace,
+		IsActive:         raw.IsActive,
+		IsZoomed:         raw.IsZoomed,
+		CursorX:          raw.CursorX,
+		CursorY:          raw.CursorY,
+		CursorShape:      raw.CursorShape,
+		CursorVisibility: raw.CursorVisibility,
+		LeftCol:          raw.LeftCol,
+		TopRow:           raw.TopRow,
+		TTYName:          raw.TTYName,
+		Size:             raw.Size,
+	}
+}
+
+func sortSessionTree(tree *sessionTree) {
+	sort.Slice(tree.Panes, func(i, j int) bool {
+		return paneLess(tree.Panes[i], tree.Panes[j])
+	})
+	sort.Slice(tree.Windows, func(i, j int) bool {
+		return tree.Windows[i].WindowID < tree.Windows[j].WindowID
+	})
+	for wIndex := range tree.Windows {
+		window := &tree.Windows[wIndex]
+		sort.Slice(window.Tabs, func(i, j int) bool {
+			return window.Tabs[i].TabID < window.Tabs[j].TabID
+		})
+		for tIndex := range window.Tabs {
+			tab := &window.Tabs[tIndex]
+			sort.Slice(tab.Panes, func(i, j int) bool {
+				return paneLess(tab.Panes[i], tab.Panes[j])
+			})
+		}
+	}
+}
+
+func paneLess(left, right paneSession) bool {
+	if left.WindowID != right.WindowID {
+		return left.WindowID < right.WindowID
+	}
+	if left.TabID != right.TabID {
+		return left.TabID < right.TabID
+	}
+	return left.PaneID < right.PaneID
 }
