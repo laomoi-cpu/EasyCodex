@@ -781,8 +781,31 @@ public class MainActivity extends Activity {
         if (statusView == null) {
             return;
         }
-        statusView.setText(text);
+        statusView.setText(statusLabel(text));
         styleStatus(text);
+    }
+
+    private String statusLabel(String text) {
+        String value = text == null ? "" : text.toLowerCase();
+        if (value.contains("connected") || value.contains("configured")) {
+            return "Connected";
+        }
+        if (value.contains("connecting")) {
+            return "Connecting";
+        }
+        if (value.contains("failed") || value.contains("error") || value.contains("unavailable")) {
+            return "Error";
+        }
+        if (value.contains("sending") || value.contains("starting") || value.contains("loading")) {
+            return "Working";
+        }
+        if (value.contains("sent") || value.contains("started") || value.contains("saved")) {
+            return "Ready";
+        }
+        if (value.contains("pane ")) {
+            return "Pane";
+        }
+        return "Offline";
     }
 
     private void styleStatus(String text) {
