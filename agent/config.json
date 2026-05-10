@@ -1,14 +1,14 @@
 {
   "listen": "127.0.0.1:8765",
-  "root": "D:\\EasyTerm",
-  "token": "easyterm-dev-token",
+  "root": "",
+  "token": "easycodex-dev-token",
   "commandTimeoutSeconds": 5,
   "autoLaunch": ["main"],
   "instances": [
     {
       "id": "main",
       "name": "main",
-      "class": "easyterm"
+      "class": "easycodex"
     }
   ]
 }

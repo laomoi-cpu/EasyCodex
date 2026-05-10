@@ -95,7 +95,11 @@ func (cli CLI) Launch(ctx context.Context, class string) error {
 
 	cmd := exec.CommandContext(ctx, guiPath, "start", "--class", class)
 	cmd.Dir = root
-	cmd.Env = append(os.Environ(), "WEZTERM_CONFIG_FILE="+filepath.Join(root, "wezterm-config", "wezterm.lua"))
+	cmd.Env = append(
+		os.Environ(),
+		"WEZTERM_CONFIG_FILE="+filepath.Join(root, "wezterm-config", "wezterm.lua"),
+		"EASYCODEX_ROOT="+root,
+	)
 	if err := cmd.Start(); err != nil {
 		return err
 	}

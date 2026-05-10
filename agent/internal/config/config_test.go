@@ -23,7 +23,7 @@ func TestLoadMissingUsesDefaultsAndRuntimeToken(t *testing.T) {
 	if len(cfg.AutoLaunch) != 1 || cfg.AutoLaunch[0] != "main" {
 		t.Fatalf("unexpected auto launch: %#v", cfg.AutoLaunch)
 	}
-	if len(cfg.Instances) != 1 || cfg.Instances[0].Class != "easyterm" {
+	if len(cfg.Instances) != 1 || cfg.Instances[0].Class != "easycodex" {
 		t.Fatalf("unexpected instances: %#v", cfg.Instances)
 	}
 }
@@ -33,11 +33,11 @@ func TestLoadConfigFile(t *testing.T) {
 	path := filepath.Join(dir, "config.json")
 	data := `{
 		"listen": "0.0.0.0:9000",
-		"root": "D:\\EasyTerm",
+		"root": "D:\\EasyCodex",
 		"token": "secret",
 		"commandTimeoutSeconds": 9,
 		"autoLaunch": [],
-		"instances": [{"id": "work", "name": "工作", "class": "easyterm-work"}]
+		"instances": [{"id": "work", "name": "work", "class": "easycodex-work"}]
 	}`
 	if err := os.WriteFile(path, []byte(data), 0600); err != nil {
 		t.Fatal(err)
@@ -66,9 +66,9 @@ func TestLoadConfigFileWithUTF8BOM(t *testing.T) {
 	path := filepath.Join(dir, "config.json")
 	data := append([]byte{0xEF, 0xBB, 0xBF}, []byte(`{
 		"listen": "127.0.0.1:8765",
-		"root": "D:\\EasyTerm",
+		"root": "D:\\EasyCodex",
 		"token": "secret",
-		"instances": [{"id": "main", "name": "main", "class": "easyterm"}]
+		"instances": [{"id": "main", "name": "main", "class": "easycodex"}]
 	}`)...)
 	if err := os.WriteFile(path, data, 0600); err != nil {
 		t.Fatal(err)
@@ -86,8 +86,8 @@ func TestLoadConfigFileWithUTF8BOM(t *testing.T) {
 func TestValidateRejectsDuplicateIDs(t *testing.T) {
 	cfg := Defaults()
 	cfg.Instances = []Instance{
-		{ID: "main", Class: "easyterm"},
-		{ID: "main", Class: "easyterm-2"},
+		{ID: "main", Class: "easycodex"},
+		{ID: "main", Class: "easycodex-2"},
 	}
 	if err := Validate(cfg); err == nil {
 		t.Fatalf("expected duplicate id error")

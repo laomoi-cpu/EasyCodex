@@ -73,7 +73,7 @@ func Load(path string) (Config, bool, error) {
 }
 
 func Defaults() Config {
-	root := os.Getenv("EASYTERM_ROOT")
+	root := os.Getenv("EASYCODEX_ROOT")
 	if root == "" {
 		root = inferRoot()
 	}
@@ -84,7 +84,7 @@ func Defaults() Config {
 		CommandTimeoutSeconds: int(DefaultCommandTimeout / time.Second),
 		AutoLaunch:            []string{"main"},
 		Instances: []Instance{
-			{ID: "main", Name: "main", Class: "easyterm"},
+			{ID: "main", Name: "main", Class: "easycodex"},
 		},
 	}
 	Normalize(&cfg)
@@ -94,6 +94,9 @@ func Defaults() Config {
 func Normalize(cfg *Config) {
 	cfg.Listen = strings.TrimSpace(cfg.Listen)
 	cfg.Root = strings.TrimSpace(cfg.Root)
+	if cfg.Root == "" {
+		cfg.Root = inferRoot()
+	}
 	cfg.Token = strings.TrimSpace(cfg.Token)
 	for i := range cfg.AutoLaunch {
 		cfg.AutoLaunch[i] = strings.TrimSpace(cfg.AutoLaunch[i])

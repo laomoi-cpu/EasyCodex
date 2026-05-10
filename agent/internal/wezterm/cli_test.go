@@ -10,7 +10,7 @@ import (
 
 func TestGetTextRequiresWeztermExecutable(t *testing.T) {
 	cli := CLI{Root: t.TempDir(), Timeout: time.Second}
-	_, err := cli.GetText(context.Background(), "easyterm", "1", 100, false)
+	_, err := cli.GetText(context.Background(), "easycodex", "1", 100, false)
 	if err == nil {
 		t.Fatalf("expected missing executable error")
 	}

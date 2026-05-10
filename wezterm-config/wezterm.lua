@@ -3,8 +3,8 @@ local act = wezterm.action
 
 local config = wezterm.config_builder()
 
-local easyterm_root = 'D:\\EasyTerm'
-local paste_image_script = easyterm_root .. '\\wezterm-config\\scripts\\paste-image.ps1'
+local easycodex_root = os.getenv 'EASYCODEX_ROOT' or 'D:\\EasyCodex'
+local paste_image_script = easycodex_root .. '\\wezterm-config\\scripts\\paste-image.ps1'
 
 local function trim(value)
   return (value or ''):gsub('%s+$', '')
@@ -71,10 +71,10 @@ wezterm.on('format-window-title', function(tab, pane, tabs, panes, config)
   end
 
   if busy > 0 then
-    return string.format('EasyTerm - %d working / %d sessions', busy, #tabs)
+    return string.format('EasyCodex - %d working / %d sessions', busy, #tabs)
   end
 
-  return string.format('EasyTerm - %d sessions', #tabs)
+  return string.format('EasyCodex - %d sessions', #tabs)
 end)
 
 return config

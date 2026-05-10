@@ -10,7 +10,7 @@ import (
 	"strconv"
 	"strings"
 
-	"easyterm-agent/internal/config"
+	"easycodex-agent/internal/config"
 )
 
 type WezTerm interface {
@@ -61,7 +61,7 @@ func (s *Server) Handler() http.Handler {
 func (s *Server) health(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"ok":      true,
-		"service": "easyterm-agent",
+		"service": "easycodex-agent",
 	})
 }
 
@@ -228,7 +228,7 @@ func (s *Server) auth(next http.HandlerFunc) http.HandlerFunc {
 		}
 		token := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
 		if token == "" {
-			token = r.Header.Get("X-EasyTerm-Token")
+			token = r.Header.Get("X-EasyCodex-Token")
 		}
 		if token != s.cfg.Token {
 			writeError(w, http.StatusUnauthorized, errors.New("unauthorized"))

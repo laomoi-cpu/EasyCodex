@@ -1,11 +1,11 @@
-# EasyTerm Agent
+# EasyCodex Agent
 
-EasyTerm Agent 是运行在 Windows PC 上的 HTTP 控制服务。Android 控制器连接 Agent，Agent 再通过 WezTerm CLI 控制指定的 WezTerm 实例。
+EasyCodex Agent 是运行在 Windows PC 上的 HTTP 控制服务。Android 控制器连接 Agent，Agent 再通过 WezTerm CLI 控制指定的 WezTerm 实例。
 
 ## 运行
 
 ```cmd
-D:\EasyTerm\tools\go\bin\go.exe run .\cmd\easyterm-agent
+D:\EasyCodex\tools\go\bin\go.exe run .\cmd\easycodex-agent
 ```
 
 默认监听：
@@ -59,7 +59,7 @@ POST /api/instances/main/launch
 Agent 会启动：
 
 ```cmd
-bin\wezterm-gui.exe start --class easyterm
+bin\wezterm-gui.exe start --class easycodex
 ```
 
 并自动设置 `WEZTERM_CONFIG_FILE` 指向 `wezterm-config\wezterm.lua`。

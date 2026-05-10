@@ -3,7 +3,12 @@ $ErrorActionPreference = "Stop"
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 
-$captureDir = "D:\EasyTerm\captures"
+$root = $env:EASYCODEX_ROOT
+if ([string]::IsNullOrWhiteSpace($root)) {
+  $root = "D:\EasyCodex"
+}
+
+$captureDir = Join-Path $root "captures"
 New-Item -ItemType Directory -Force -Path $captureDir | Out-Null
 
 if (-not [System.Windows.Forms.Clipboard]::ContainsImage()) {

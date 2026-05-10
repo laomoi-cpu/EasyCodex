@@ -1,3 +1,3 @@
-module easyterm-agent
+module easycodex-agent
 
 go 1.26.0

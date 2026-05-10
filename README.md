@@ -1,4 +1,4 @@
-# EasyTerm
+# EasyCodex
 
 Portable WezTerm-based terminal customization workspace with a local Agent API.
 
@@ -7,7 +7,7 @@ Portable WezTerm-based terminal customization workspace with a local Agent API.
 Start the PC Agent:
 
 ```cmd
-D:\EasyTerm\agent\bin\easyterm-agent.exe
+D:\EasyCodex\agent\bin\easycodex-agent.exe
 ```
 
 The Agent automatically launches the default WezTerm instance after startup.
@@ -25,7 +25,7 @@ the default instance:
 {
   "id": "main",
   "name": "main",
-  "class": "easyterm"
+  "class": "easycodex"
 }
 ```
 
@@ -35,7 +35,7 @@ You can also launch a configured WezTerm instance through the Agent:
 POST /api/instances/main/launch
 ```
 
-The Agent starts `bin\wezterm-gui.exe start --class easyterm` and sets `WEZTERM_CONFIG_FILE` to
+The Agent starts `bin\wezterm-gui.exe start --class easycodex` and sets `WEZTERM_CONFIG_FILE` to
 `wezterm-config\wezterm.lua`.
 
 See `agent\README.md` for the HTTP API.
@@ -44,7 +44,7 @@ See `agent\README.md` for the HTTP API.
 
 `Ctrl+V` is customized in `wezterm-config\wezterm.lua`.
 
-- If the Windows clipboard contains an image, `scripts\paste-image.ps1` saves it under `D:\EasyTerm\captures` and pastes the quoted image path into the active pane.
-- If the clipboard does not contain an image, EasyTerm falls back to WezTerm's normal text paste.
+- If the Windows clipboard contains an image, `scripts\paste-image.ps1` saves it under `captures` and pastes the quoted image path into the active pane.
+- If the clipboard does not contain an image, EasyCodex falls back to WezTerm's normal text paste.
 
 `captures\` is ignored by git.

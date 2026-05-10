@@ -8,7 +8,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"easyterm-agent/internal/config"
+	"easycodex-agent/internal/config"
 )
 
 type fakeWezTerm struct {
@@ -57,10 +57,10 @@ func testServer(t *testing.T) (*Server, *fakeWezTerm) {
 	t.Helper()
 	cfg := config.Config{
 		Listen: "127.0.0.1:0",
-		Root:   `D:\EasyTerm`,
+		Root:   `D:\EasyCodex`,
 		Token:  "secret",
 		Instances: []config.Instance{
-			{ID: "main", Name: "主终端", Class: "easyterm"},
+			{ID: "main", Name: "main", Class: "easycodex"},
 		},
 	}
 	fake := &fakeWezTerm{}
@@ -106,7 +106,7 @@ func TestSessionsReturnsWezTermPayload(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d body = %s", rec.Code, rec.Body.String())
 	}
-	if fake.lastClass != "easyterm" {
+	if fake.lastClass != "easycodex" {
 		t.Fatalf("class = %q", fake.lastClass)
 	}
 }
@@ -122,7 +122,7 @@ func TestLaunchInstance(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d body = %s", rec.Code, rec.Body.String())
 	}
-	if !fake.launched || fake.lastClass != "easyterm" {
+	if !fake.launched || fake.lastClass != "easycodex" {
 		t.Fatalf("unexpected launch: %#v", fake)
 	}
 }

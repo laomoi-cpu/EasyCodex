@@ -1,6 +1,6 @@
 {
   "listen": "127.0.0.1:8765",
-  "root": "D:\\EasyTerm",
+  "root": "",
   "token": "",
   "commandTimeoutSeconds": 5,
   "autoLaunch": ["main"],
@@ -8,7 +8,7 @@
     {
       "id": "main",
       "name": "main",
-      "class": "easyterm"
+      "class": "easycodex"
     }
   ]
 }

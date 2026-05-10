@@ -13,9 +13,9 @@ import (
 	"syscall"
 	"time"
 
-	"easyterm-agent/internal/config"
-	"easyterm-agent/internal/server"
-	"easyterm-agent/internal/wezterm"
+	"easycodex-agent/internal/config"
+	"easycodex-agent/internal/server"
+	"easycodex-agent/internal/wezterm"
 )
 
 func main() {
@@ -56,7 +56,7 @@ func main() {
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
-	fmt.Println("EasyTerm Agent started")
+	fmt.Println("EasyCodex Agent started")
 	if found {
 		fmt.Printf("Config: %s\n", *configPath)
 	} else {
