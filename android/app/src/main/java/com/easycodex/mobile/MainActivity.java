@@ -53,7 +53,7 @@ public class MainActivity extends Activity {
     private EditText commandInput;
     private TextView lastSentView;
     private Button currentPaneButton;
-    private LinearLayout keyPanel;
+    private View keyPanel;
     private boolean keyPanelExpanded = false;
 
     private String baseUrl = "http://127.0.0.1:8765";
@@ -113,8 +113,8 @@ public class MainActivity extends Activity {
         statusView = statusButton;
         styleStatus("Idle");
         Button settingsButton = iconButton("⚙");
-        topBar.addView(statusButton, new LinearLayout.LayoutParams(0, dp(38), 1));
-        topBar.addView(settingsButton, new LinearLayout.LayoutParams(dp(44), dp(38)));
+        topBar.addView(statusButton, rowWeightParams(1, dp(38), 0, dp(6)));
+        topBar.addView(settingsButton, rowFixedParams(dp(44), dp(38), 0, 0));
         root.addView(topBar, matchWrap());
 
         panesView = new LinearLayout(this);
@@ -128,8 +128,8 @@ public class MainActivity extends Activity {
         sessionStrip.setGravity(Gravity.CENTER_VERTICAL);
         sessionStrip.setPadding(0, 0, 0, dp(6));
         Button newCodexButton = iconButton("+");
-        sessionStrip.addView(newCodexButton, new LinearLayout.LayoutParams(dp(44), dp(42)));
-        sessionStrip.addView(paneScroll, new LinearLayout.LayoutParams(0, dp(42), 1));
+        sessionStrip.addView(newCodexButton, rowFixedParams(dp(44), dp(42), 0, dp(6)));
+        sessionStrip.addView(paneScroll, rowWeightParams(1, dp(42), 0, 0));
         root.addView(sessionStrip, matchWrap());
 
         terminalScroll = new ScrollView(this);
@@ -147,21 +147,37 @@ public class MainActivity extends Activity {
         lastSentView = smallLabel("");
         root.addView(lastSentView, fixedHeight(dp(18)));
 
-        keyPanel = new LinearLayout(this);
-        keyPanel.setOrientation(LinearLayout.HORIZONTAL);
-        keyPanel.setGravity(Gravity.CENTER_VERTICAL);
-        keyPanel.setVisibility(View.GONE);
+        LinearLayout specialKeys = new LinearLayout(this);
+        specialKeys.setOrientation(LinearLayout.VERTICAL);
+        specialKeys.setVisibility(View.GONE);
+        LinearLayout keyRowOne = new LinearLayout(this);
+        keyRowOne.setOrientation(LinearLayout.HORIZONTAL);
+        keyRowOne.setGravity(Gravity.CENTER_VERTICAL);
+        LinearLayout keyRowTwo = new LinearLayout(this);
+        keyRowTwo.setOrientation(LinearLayout.HORIZONTAL);
+        keyRowTwo.setGravity(Gravity.CENTER_VERTICAL);
         Button enterOnly = compactButton("Enter");
         Button ctrlC = compactButton("Ctrl+C");
         Button tab = compactButton("Tab");
+        Button shiftTab = compactButton("S+Tab");
+        Button space = compactButton("Space");
+        Button up = compactButton("↑");
+        Button down = compactButton("↓");
         Button esc = compactButton("Esc");
         Button clearText = compactButton("Clear");
-        keyPanel.addView(enterOnly, weightWrap(1));
-        keyPanel.addView(ctrlC, weightWrap(1));
-        keyPanel.addView(tab, weightWrap(1));
-        keyPanel.addView(esc, weightWrap(1));
-        keyPanel.addView(clearText, weightWrap(1));
-        root.addView(keyPanel, fixedHeight(dp(38)));
+        keyRowOne.addView(enterOnly, rowWeightParams(1, -1, 0, dp(5)));
+        keyRowOne.addView(ctrlC, rowWeightParams(1, -1, 0, dp(5)));
+        keyRowOne.addView(tab, rowWeightParams(1, -1, 0, dp(5)));
+        keyRowOne.addView(shiftTab, rowWeightParams(1, -1, 0, dp(5)));
+        keyRowOne.addView(space, rowWeightParams(1, -1, 0, 0));
+        keyRowTwo.addView(up, rowWeightParams(1, -1, 0, dp(5)));
+        keyRowTwo.addView(down, rowWeightParams(1, -1, 0, dp(5)));
+        keyRowTwo.addView(esc, rowWeightParams(1, -1, 0, dp(5)));
+        keyRowTwo.addView(clearText, rowWeightParams(1, -1, 0, 0));
+        specialKeys.addView(keyRowOne, rowFixedParams(-1, dp(32), 0, 0));
+        specialKeys.addView(keyRowTwo, rowFixedParams(-1, dp(32), 0, 0));
+        keyPanel = specialKeys;
+        root.addView(keyPanel, fixedHeight(dp(68)));
 
         LinearLayout inputRow = new LinearLayout(this);
         inputRow.setOrientation(LinearLayout.HORIZONTAL);
@@ -169,9 +185,9 @@ public class MainActivity extends Activity {
         commandInput = multilineInput("Message", "");
         Button moreKeys = iconButton("⌘");
         Button sendEnter = button("Send");
-        inputRow.addView(commandInput, new LinearLayout.LayoutParams(0, dp(48), 1));
-        inputRow.addView(moreKeys, new LinearLayout.LayoutParams(dp(44), dp(48)));
-        inputRow.addView(sendEnter, new LinearLayout.LayoutParams(dp(76), dp(48)));
+        inputRow.addView(commandInput, rowWeightParams(1, dp(48), 0, dp(6)));
+        inputRow.addView(moreKeys, rowFixedParams(dp(44), dp(48), 0, dp(6)));
+        inputRow.addView(sendEnter, rowFixedParams(dp(76), dp(48), 0, 0));
         root.addView(inputRow, matchWrap());
 
         setContentView(root);
@@ -185,6 +201,10 @@ public class MainActivity extends Activity {
         enterOnly.setOnClickListener(v -> sendRaw("", true));
         ctrlC.setOnClickListener(v -> sendRaw("\u0003", false));
         tab.setOnClickListener(v -> sendRaw("\t", false));
+        shiftTab.setOnClickListener(v -> sendRaw("\u001B[Z", false));
+        space.setOnClickListener(v -> sendRaw(" ", false));
+        up.setOnClickListener(v -> sendRaw("\u001B[A", false));
+        down.setOnClickListener(v -> sendRaw("\u001B[B", false));
         esc.setOnClickListener(v -> sendRaw("\u001B", false));
     }
 
@@ -346,7 +366,7 @@ public class MainActivity extends Activity {
             item.setAllCaps(false);
             stylePaneButton(item, pane.id.equals(paneId), pane.active);
             item.setOnClickListener(v -> selectPane(pane.id));
-            panesView.addView(item, new LinearLayout.LayoutParams(dp(132), dp(38)));
+            panesView.addView(item, rowFixedParams(dp(132), dp(38), 0, dp(6)));
             if (pane.id.equals(paneId)) {
                 currentPaneButton = item;
             }
@@ -758,7 +778,7 @@ public class MainActivity extends Activity {
 
     private Button compactButton(String text) {
         Button button = button(text);
-        button.setTextSize(11);
+        button.setTextSize(10);
         button.setTextColor(0xFF1F2937);
         button.setBackground(rounded(0xFFE8EEF8, dp(7), 0xFFD5DAE3));
         return button;
@@ -916,6 +936,18 @@ public class MainActivity extends Activity {
 
     private LinearLayout.LayoutParams weightWrap(float weight) {
         return new LinearLayout.LayoutParams(0, -2, weight);
+    }
+
+    private LinearLayout.LayoutParams rowWeightParams(float weight, int height, int left, int right) {
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0, height, weight);
+        params.setMargins(left, 0, right, 0);
+        return params;
+    }
+
+    private LinearLayout.LayoutParams rowFixedParams(int width, int height, int left, int right) {
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(width, height);
+        params.setMargins(left, 0, right, 0);
+        return params;
     }
 
     private int dp(int value) {
