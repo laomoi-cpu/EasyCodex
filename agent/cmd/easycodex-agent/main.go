@@ -52,6 +52,14 @@ func main() {
 	if displayConfigPath == "" {
 		displayConfigPath = filepath.Join(cfg.Root, "agent", "config.json")
 	}
+	if *tokenOverride == "" {
+		if changed, err := regenerateStartupToken(displayConfigPath, &cfg); err != nil {
+			logger.Error("failed to regenerate startup token", "error", err)
+			os.Exit(1)
+		} else if changed {
+			logger.Info("regenerated startup token", "config", displayConfigPath)
+		}
+	}
 
 	cli := wezterm.CLI{Root: cfg.Root, Timeout: cfg.CommandTimeout()}
 	tracker := &trackedWezTerm{cli: cli, logger: logger}
@@ -118,6 +126,18 @@ func main() {
 			os.Exit(1)
 		}
 	}
+}
+
+func regenerateStartupToken(configPath string, cfg *config.Config) (bool, error) {
+	if !cfg.RegenerateTokenOnStart {
+		return false, nil
+	}
+	token, err := config.GenerateToken()
+	if err != nil {
+		return false, err
+	}
+	cfg.Token = token
+	return true, config.Save(configPath, *cfg)
 }
 
 func startTrayHelper(logger *slog.Logger, cfg config.Config, configPath string) {

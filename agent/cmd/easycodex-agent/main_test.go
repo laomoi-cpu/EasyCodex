@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"io"
 	"log/slog"
+	"path/filepath"
 	"testing"
 
 	"easycodex-agent/internal/config"
@@ -14,6 +15,45 @@ type fakeLaunchListClient struct {
 	listPayload json.RawMessage
 	listErr     error
 	launches    []string
+}
+
+func TestRegenerateStartupTokenSavesNewToken(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+	cfg := config.Defaults()
+	cfg.Root = `D:\EasyCodex`
+	cfg.Token = "old-token"
+	cfg.RegenerateTokenOnStart = true
+
+	changed, err := regenerateStartupToken(path, &cfg)
+	if err != nil {
+		t.Fatalf("regenerateStartupToken returned error: %v", err)
+	}
+	if !changed {
+		t.Fatalf("expected startup token to be regenerated")
+	}
+	if cfg.Token == "" || cfg.Token == "old-token" {
+		t.Fatalf("unexpected token after regenerate: %q", cfg.Token)
+	}
+	loaded, found, err := config.Load(path)
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+	if !found || loaded.Token != cfg.Token || !loaded.RegenerateTokenOnStart {
+		t.Fatalf("unexpected saved config: found=%v cfg=%#v", found, loaded)
+	}
+}
+
+func TestRegenerateStartupTokenSkipsWhenDisabled(t *testing.T) {
+	cfg := config.Defaults()
+	cfg.Token = "stable-token"
+
+	changed, err := regenerateStartupToken(filepath.Join(t.TempDir(), "config.json"), &cfg)
+	if err != nil {
+		t.Fatalf("regenerateStartupToken returned error: %v", err)
+	}
+	if changed || cfg.Token != "stable-token" {
+		t.Fatalf("unexpected regenerate result: changed=%v token=%q", changed, cfg.Token)
+	}
 }
 
 func (fake *fakeLaunchListClient) Launch(ctx context.Context, class string) (int, error) {

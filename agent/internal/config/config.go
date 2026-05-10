@@ -22,6 +22,7 @@ type Config struct {
 	Listen                 string         `json:"listen"`
 	Root                   string         `json:"root"`
 	Token                  string         `json:"token"`
+	RegenerateTokenOnStart bool           `json:"regenerateTokenOnStart"`
 	CommandTimeoutSeconds  int            `json:"commandTimeoutSeconds"`
 	AutoLaunch             []string       `json:"autoLaunch"`
 	CloseLaunchedGUIOnExit bool           `json:"closeLaunchedGuiOnExit"`

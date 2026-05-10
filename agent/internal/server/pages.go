@@ -152,7 +152,7 @@ func settingsPageHTML() string {
   <div>
     <p class="eyebrow">Agent Settings</p>
     <h1>Configure PC agent and mobile defaults.</h1>
-    <p class="lead">Changes are saved to the Agent config file. Mobile defaults, token, and instance list apply immediately; listen address and startup behavior apply after restarting the Agent.</p>
+    <p class="lead">Changes are saved to the Agent config file. Mobile defaults, token, and instance list apply immediately; listen address and startup token behavior apply after restarting the Agent.</p>
   </div>
   <div id="saveState" class="status-card muted">Loading...</div>
 </section>
@@ -165,6 +165,7 @@ func settingsPageHTML() string {
       <label><span>EasyCodex root</span><input id="root" autocomplete="off"></label>
       <label><span>Command timeout seconds</span><input id="timeout" type="number" min="1" max="120"></label>
     </div>
+    <label class="check-row"><input id="regenToken" type="checkbox"><span>Regenerate API token every Agent startup</span></label>
     <label class="check-row"><input id="closeGui" type="checkbox"><span>Close GUI windows launched by Agent when Agent exits</span></label>
   </section>
 
@@ -224,7 +225,7 @@ function lines(value){ return value.split(/\r?\n/).map(x=>x.trim()).filter(Boole
 function fill(){
   const c=currentConfig;
   $('listen').value=c.listen||''; $('token').value=c.token||''; $('root').value=c.root||'';
-  $('timeout').value=c.commandTimeoutSeconds||5; $('closeGui').checked=!!c.closeLaunchedGuiOnExit;
+  $('timeout').value=c.commandTimeoutSeconds||5; $('regenToken').checked=!!c.regenerateTokenOnStart; $('closeGui').checked=!!c.closeLaunchedGuiOnExit;
   $('defaultCwd').value=(c.mobileDefaults&&c.mobileDefaults.cwd)||'';
   $('defaultCommand').value=((c.mobileDefaults&&c.mobileDefaults.command)||[]).join('\n');
   renderInstances(c.instances||[]); renderDefaults(); renderAutoLaunch();
@@ -267,6 +268,7 @@ function collect(){
   return {
     listen:$('listen').value.trim(), token:$('token').value.trim(), root:$('root').value.trim(),
     commandTimeoutSeconds:parseInt($('timeout').value,10)||5,
+    regenerateTokenOnStart:$('regenToken').checked,
     closeLaunchedGuiOnExit:$('closeGui').checked,
     instances,
     autoLaunch:[...document.querySelectorAll('#autoLaunch input:checked')].map(x=>x.value),

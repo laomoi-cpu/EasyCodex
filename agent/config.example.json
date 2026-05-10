@@ -2,6 +2,7 @@
     "listen":  "127.0.0.1:8765",
     "root":  "",
     "token":  "",
+    "regenerateTokenOnStart":  false,
     "commandTimeoutSeconds":  5,
     "autoLaunch":  [
                        "main"

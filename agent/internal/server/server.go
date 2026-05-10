@@ -654,6 +654,9 @@ func changedRestartFields(before, after config.Config) []string {
 	if before.CommandTimeoutSeconds != after.CommandTimeoutSeconds {
 		fields = append(fields, "commandTimeoutSeconds")
 	}
+	if before.RegenerateTokenOnStart != after.RegenerateTokenOnStart {
+		fields = append(fields, "regenerateTokenOnStart")
+	}
 	if strings.Join(before.AutoLaunch, "\x00") != strings.Join(after.AutoLaunch, "\x00") {
 		fields = append(fields, "autoLaunch")
 	}

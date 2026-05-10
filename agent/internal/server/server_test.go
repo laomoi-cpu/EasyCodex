@@ -203,6 +203,7 @@ func TestSettingsSaveWritesConfigAndUpdatesAuth(t *testing.T) {
 		"listen":"127.0.0.1:0",
 		"root":"D:\\EasyCodex",
 		"token":"new-secret",
+		"regenerateTokenOnStart":true,
 		"commandTimeoutSeconds":5,
 		"autoLaunch":["main"],
 		"closeLaunchedGuiOnExit":false,
@@ -222,7 +223,7 @@ func TestSettingsSaveWritesConfigAndUpdatesAuth(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load returned error: %v", err)
 	}
-	if !found || loaded.Token != "new-secret" {
+	if !found || loaded.Token != "new-secret" || !loaded.RegenerateTokenOnStart {
 		t.Fatalf("unexpected saved config: found=%v cfg=%#v", found, loaded)
 	}
 
