@@ -1079,16 +1079,16 @@ public class MainActivity extends Activity {
         int index = 0;
         int segmentStart = 0;
         while (index < text.length()) {
-            if (text.charAt(index) == 27 && index + 1 < text.length() && text.charAt(index + 1) == '[') {
-                int commandEnd = findAnsiCommandEnd(text, index + 2);
-                if (commandEnd >= 0) {
+            if (text.charAt(index) == 27) {
+                int sequenceEnd = findAnsiSequenceEnd(text, index);
+                if (sequenceEnd > index) {
                     appendAnsiRun(builder, text, segmentStart, index, fg, bg);
-                    if (text.charAt(commandEnd) == 'm') {
-                        int[] next = applySgr(text.substring(index + 2, commandEnd), fg, bg);
+                    if (isSgrSequence(text, index, sequenceEnd)) {
+                        int[] next = applySgr(text.substring(index + 2, sequenceEnd - 1), fg, bg);
                         fg = next[0];
                         bg = next[1];
                     }
-                    index = commandEnd + 1;
+                    index = sequenceEnd;
                     segmentStart = index;
                     continue;
                 }
@@ -1103,10 +1103,10 @@ public class MainActivity extends Activity {
         StringBuilder builder = new StringBuilder();
         int index = 0;
         while (index < text.length()) {
-            if (text.charAt(index) == 27 && index + 1 < text.length() && text.charAt(index + 1) == '[') {
-                int commandEnd = findAnsiCommandEnd(text, index + 2);
-                if (commandEnd >= 0) {
-                    index = commandEnd + 1;
+            if (text.charAt(index) == 27) {
+                int sequenceEnd = findAnsiSequenceEnd(text, index);
+                if (sequenceEnd > index) {
+                    index = sequenceEnd;
                     continue;
                 }
             }
@@ -1114,6 +1114,43 @@ public class MainActivity extends Activity {
             index++;
         }
         return builder.toString();
+    }
+
+    private int findAnsiSequenceEnd(String text, int escapeIndex) {
+        if (escapeIndex + 1 >= text.length()) {
+            return -1;
+        }
+        char next = text.charAt(escapeIndex + 1);
+        if (next == '[') {
+            int commandEnd = findAnsiCommandEnd(text, escapeIndex + 2);
+            return commandEnd >= 0 ? commandEnd + 1 : text.length();
+        }
+        if (next == ']' || next == 'P' || next == '_' || next == '^' || next == 'X') {
+            return findStringControlEnd(text, escapeIndex + 2);
+        }
+        if (next == '(' || next == ')' || next == '*' || next == '+' || next == '-' || next == '.' || next == '/' || next == '#') {
+            return Math.min(text.length(), escapeIndex + 3);
+        }
+        return Math.min(text.length(), escapeIndex + 2);
+    }
+
+    private boolean isSgrSequence(String text, int escapeIndex, int sequenceEnd) {
+        return escapeIndex + 2 < sequenceEnd
+                && text.charAt(escapeIndex + 1) == '['
+                && text.charAt(sequenceEnd - 1) == 'm';
+    }
+
+    private int findStringControlEnd(String text, int start) {
+        for (int i = start; i < text.length(); i++) {
+            char ch = text.charAt(i);
+            if (ch == 7) {
+                return i + 1;
+            }
+            if (ch == 27 && i + 1 < text.length() && text.charAt(i + 1) == '\\') {
+                return i + 2;
+            }
+        }
+        return text.length();
     }
 
     private int findAnsiCommandEnd(String text, int start) {
