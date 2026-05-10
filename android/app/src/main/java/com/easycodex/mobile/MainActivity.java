@@ -1060,7 +1060,7 @@ public class MainActivity extends Activity {
 
     private String statusLabel(String text) {
         String value = text == null ? "" : text.toLowerCase();
-        if (value.contains("connected") || value.contains("configured")) {
+        if (value.contains("connected") || value.contains("configured") || value.startsWith("panes:") || value.contains(" selected")) {
             return "Connected";
         }
         if (value.contains("connecting")) {
@@ -1075,9 +1075,6 @@ public class MainActivity extends Activity {
         if (value.contains("sent") || value.contains("started") || value.contains("saved")) {
             return "Ready";
         }
-        if (value.contains("pane ")) {
-            return "Pane";
-        }
         return "Offline";
     }
 
@@ -1089,7 +1086,7 @@ public class MainActivity extends Activity {
         int fill = 0xFFE5E7EB;
         int stroke = 0xFFD1D5DB;
         int textColor = 0xFF374151;
-        if (value.contains("connected") || value.contains("configured") || value.contains("sent") || value.contains("started") || value.contains("saved")) {
+        if (value.contains("connected") || value.contains("configured") || value.contains("sent") || value.contains("started") || value.contains("saved") || value.startsWith("panes:") || value.contains(" selected")) {
             fill = 0xFFD1FAE5;
             stroke = 0xFF86EFAC;
             textColor = 0xFF065F46;
