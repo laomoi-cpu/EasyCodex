@@ -273,6 +273,17 @@ func terminalPageHTML() string {
     <button id="dialogDelete" type="button" class="danger">Delete</button>
     <button id="dialogClone" type="button">Clone</button>
   </div>
+</dialog>
+<dialog id="connectionDialog" class="pane-dialog">
+  <h2>Server Settings</h2>
+  <div class="connect-form">
+    <label><span>Agent Base URL</span><input id="dialogBaseUrl" autocomplete="off" placeholder="http://192.168.x.x:8765"></label>
+    <label><span>Token</span><input id="dialogToken" autocomplete="off" placeholder="easycodex-dev-token"></label>
+  </div>
+  <div class="dialog-actions">
+    <button id="connectionCancel" type="button" class="secondary">Cancel</button>
+    <button id="connectionSave" type="button">Save</button>
+  </div>
 </dialog>`
 	script := `<script>` + terminalJS() + `</script>`
 	return pageShell("Terminal", "terminal", body, script)
@@ -445,6 +456,26 @@ function saveConnectionFields(){
   store.setItem('easycodex.token', state.token);
   $('baseUrl').value = state.baseUrl;
   $('browserToken').value = state.token;
+}
+function openConnectionDialog(){
+  $('dialogBaseUrl').value = state.baseUrl || location.origin;
+  $('dialogToken').value = state.token || '';
+  const dialog = $('connectionDialog');
+  if (dialog.showModal) dialog.showModal(); else dialog.setAttribute('open', 'open');
+}
+function closeConnectionDialog(){
+  const dialog = $('connectionDialog');
+  if (dialog.close) dialog.close(); else dialog.removeAttribute('open');
+}
+async function saveConnectionDialog(){
+  state.baseUrl = trimSlash($('dialogBaseUrl').value || location.origin);
+  state.token = String($('dialogToken').value || '').trim();
+  $('baseUrl').value = state.baseUrl;
+  $('browserToken').value = state.token;
+  saveConnectionFields();
+  closeConnectionDialog();
+  stopPolling();
+  await connect();
 }
 function showConnect(show){
   $('connectPanel').hidden = !show;
@@ -735,7 +766,7 @@ $('browserToken').value = state.token;
 showConnect(!state.token);
 $('connectForm').addEventListener('submit', event => { event.preventDefault(); connect().catch(err => setStatus(err.message, 'err')); });
 $('connectionStatus').onclick = () => connect().catch(err => setStatus(err.message, 'err'));
-$('editConnection').onclick = () => { stopPolling(); showConnect(true); };
+$('editConnection').onclick = () => openConnectionDialog();
 $('refreshSessions').onclick = () => loadSessions().catch(err => setStatus(err.message, 'err'));
 $('newSession').onclick = () => spawnSession().catch(err => setStatus(err.message, 'err'));
 $('sendForm').addEventListener('submit', event => { event.preventDefault(); sendCommand(true).catch(err => setStatus(err.message, 'err')); });
@@ -753,6 +784,8 @@ document.querySelectorAll('[data-key]').forEach(button => button.onclick = () =>
 $('dialogClose').onclick = () => $('paneDialog').close();
 $('dialogDelete').onclick = () => { const pane = state.selectedPane; $('paneDialog').close(); if (pane) deletePane(pane).catch(err => setStatus(err.message, 'err')); };
 $('dialogClone').onclick = () => { const pane = state.selectedPane; $('paneDialog').close(); if (pane) spawnSession(displayCwd(pane.cwd) === '-' ? state.defaults.cwd : displayCwd(pane.cwd)).catch(err => setStatus(err.message, 'err')); };
+$('connectionCancel').onclick = () => closeConnectionDialog();
+$('connectionSave').onclick = () => saveConnectionDialog().catch(err => setStatus(err.message, 'err'));
 setKeyPanel(false);
 if (state.token) connect().catch(err => { showConnect(true); setStatus(err.message, 'err'); });
 `

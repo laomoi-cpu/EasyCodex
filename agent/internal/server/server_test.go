@@ -414,6 +414,9 @@ func TestTerminalPageIsAvailableRemotely(t *testing.T) {
 		!strings.Contains(body, ".page-terminal .pane-list{display:flex;gap:5px;min-width:0;overflow-x:auto;overflow-y:hidden") ||
 		!strings.Contains(body, ".page-terminal #newSession{width:32px") ||
 		!strings.Contains(body, ".page-terminal #refreshSessions{width:58px") ||
+		!strings.Contains(body, `id="connectionDialog"`) ||
+		!strings.Contains(body, "function openConnectionDialog()") ||
+		!strings.Contains(body, "$('editConnection').onclick = () => openConnectionDialog()") ||
 		!strings.Contains(body, "function setKeyPanel(show)") ||
 		!strings.Contains(body, "$('toggleKeys').onclick = () => setKeyPanel($('keyPanel').hidden)") ||
 		!strings.Contains(body, "snapshot?lines=180&escapes=1") {
