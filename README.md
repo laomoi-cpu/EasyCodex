@@ -2,9 +2,9 @@
 
 EasyCodex 是一个面向 Codex 用户的 Windows 远程终端工作台。
 
-它解决的是一个很实际的问题：你主要在 Windows 电脑上用 WezTerm GUI 跑 Codex，离开电脑后，又希望能用手机继续查看进度、发送指令、启动新会话；回到电脑时，还能继续在原来的 WezTerm 窗口里工作。
+它解决的是一个很实际的问题：你主要在 Windows 电脑上用命令行或 CLI 跑 Codex，离开电脑后，又希望能用手机继续查看进度、发送指令、启动新会话；回到电脑时，还能继续在原来的命令行窗口里工作。
 
-目前 EasyCodex **只支持 Windows**。PC 端使用 WezTerm GUI，手机 App、PC 浏览器和手机浏览器都是远程控制入口。
+目前 EasyCodex **只支持 Windows**。PC 端使用命令行窗口运行 Codex，手机 App、PC 浏览器和手机浏览器都是远程控制入口。
 
 ## 产品亮点
 
@@ -170,6 +170,12 @@ Android App 适合手机常用场景：
 ```
 
 GitHub Actions 支持推送 `v0.0.x` 标签后自动构建发布包。
+
+## 技术说明
+
+EasyCodex 底层使用 WezTerm 来启动和管理 Codex 会话。
+
+普通用户可以把它理解成一个更适合远程控制的命令行窗口。相比直接使用 Windows 自带的 cmd，WezTerm 的外观和性能更好，对彩色终端输出、窗口、标签页、pane、截图和后续扩展功能的支持也更完整。
 
 ## 更多文档
 
