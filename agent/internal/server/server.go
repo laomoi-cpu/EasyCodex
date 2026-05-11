@@ -216,6 +216,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/config", s.auth(s.appConfig))
 	mux.HandleFunc("GET /api/settings", s.localOnly(s.settings))
 	mux.HandleFunc("GET /api/connections", s.localOnly(s.connections))
+	mux.HandleFunc("GET /api/update/check", s.localOnly(s.checkUpdate))
+	mux.HandleFunc("POST /api/update/apply", s.localOnly(s.applyUpdate))
 	mux.HandleFunc("POST /api/settings", s.localOnly(s.saveSettings))
 	mux.HandleFunc("GET /api/instances", s.auth(s.instancesList))
 	mux.HandleFunc("POST /api/instances/{instanceID}/launch", s.auth(s.launch))

@@ -80,6 +80,6 @@ jobs:
           tag_name: ${{ github.ref_name }}
           files: |
             EasyCodex-${{ steps.version.outputs.version }}.zip
-            ${{ steps.version.outputs.version }}/EasyCodex-${{ steps.version.outputs.version }}.exe
+            ${{ steps.version.outputs.version }}/EasyCodex.exe
             ${{ steps.version.outputs.version }}/EasyCodex-${{ steps.version.outputs.version }}.apk
             ${{ steps.version.outputs.version }}/manifest.json

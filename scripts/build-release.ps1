@@ -54,7 +54,7 @@ if (Test-Path -LiteralPath $agentTray) {
 }
 
 if (-not $SkipAgent) {
-    $agentExe = Join-Path $releaseDir "EasyCodex-$Version.exe"
+    $agentExe = Join-Path $releaseDir "EasyCodex.exe"
     Push-Location (Join-Path $repoRoot "agent")
     try {
         $env:GOOS = "windows"
@@ -98,12 +98,17 @@ $manifest = [ordered]@{
     version = $Version
     builtAt = (Get-Date).ToString("o")
     files = @(
-        "EasyCodex-$Version.exe",
+        "EasyCodex.exe",
         "EasyCodex-$Version.apk",
         "bin/",
         "wezterm-config/",
         "agent/config.example.json",
         "agent/tray.ps1"
+    )
+    exeName = "EasyCodex.exe"
+    updatableFiles = @(
+        "EasyCodex.exe",
+        "wezterm-config/"
     )
 }
 $manifest | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $releaseDir "manifest.json") -Encoding UTF8

@@ -284,6 +284,76 @@ func TestSettingsIncludesVersion(t *testing.T) {
 	if !strings.Contains(body, "Current version") || !strings.Contains(body, `id="version"`) {
 		t.Fatalf("expected version field in settings page: %s", body)
 	}
+	if !strings.Contains(body, "Check Update") ||
+		!strings.Contains(body, "/api/update/check") ||
+		!strings.Contains(body, "/api/update/apply") {
+		t.Fatalf("expected update controls in settings page: %s", body)
+	}
+}
+
+func TestUpdateCheckReportsNewRelease(t *testing.T) {
+	previousVersion := AppVersion
+	AppVersion = "0.0.7"
+	t.Cleanup(func() { AppVersion = previousVersion })
+	releaseServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"tag_name":     "v0.0.8",
+			"html_url":     "https://github.com/laomoi-cpu/EasyCodex/releases/tag/v0.0.8",
+			"published_at": "2026-05-11T00:00:00Z",
+			"assets": []map[string]any{
+				{"name": "EasyCodex-0.0.8.zip", "browser_download_url": "https://example.com/EasyCodex-0.0.8.zip"},
+			},
+		})
+	}))
+	defer releaseServer.Close()
+	previousURL := githubLatestReleaseURL
+	previousClient := updateHTTPClient
+	githubLatestReleaseURL = releaseServer.URL
+	updateHTTPClient = releaseServer.Client()
+	t.Cleanup(func() {
+		githubLatestReleaseURL = previousURL
+		updateHTTPClient = previousClient
+	})
+	srv, _ := testServer(t)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/update/check", nil)
+	req.RemoteAddr = "127.0.0.1:12345"
+	rec := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d body = %s", rec.Code, rec.Body.String())
+	}
+	var payload struct {
+		OK   bool `json:"ok"`
+		Data struct {
+			CurrentVersion string `json:"currentVersion"`
+			LatestVersion  string `json:"latestVersion"`
+			CanUpdate      bool   `json:"canUpdate"`
+			UpToDate       bool   `json:"upToDate"`
+			ZipURL         string `json:"zipUrl"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatal(err)
+	}
+	if !payload.OK || payload.Data.CurrentVersion != "0.0.7" || payload.Data.LatestVersion != "0.0.8" ||
+		!payload.Data.CanUpdate || payload.Data.UpToDate || payload.Data.ZipURL == "" {
+		t.Fatalf("unexpected update payload: %#v", payload)
+	}
+}
+
+func TestUpdateCheckIsLocalOnly(t *testing.T) {
+	srv, _ := testServer(t)
+	req := httptest.NewRequest(http.MethodGet, "/api/update/check", nil)
+	req.RemoteAddr = "192.168.1.20:12345"
+	rec := httptest.NewRecorder()
+
+	srv.Handler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("status = %d body = %s", rec.Code, rec.Body.String())
+	}
 }
 
 func TestPairingPageIncludesPublicBaseURL(t *testing.T) {
