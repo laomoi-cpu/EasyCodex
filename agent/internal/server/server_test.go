@@ -626,6 +626,7 @@ func TestTerminalPageIsAvailableRemotely(t *testing.T) {
 		!strings.Contains(body, "$('newSession').onclick = () => openSpawnDialog()") ||
 		!strings.Contains(body, "/api/codex/sessions?limit=20") ||
 		!strings.Contains(body, "['cmd.exe','/k','codex','resume']") ||
+		!strings.Contains(body, "if (session.cwd) $('spawnCwd').value = spawnCwdFromValue(session.cwd)") ||
 		!strings.Contains(body, "snapshot?lines=180&escapes=1") {
 		t.Fatalf("unexpected terminal page: %s", body)
 	}

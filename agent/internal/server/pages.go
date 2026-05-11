@@ -1134,6 +1134,7 @@ function renderCodexSessions(){
     button.innerHTML = '<strong>' + escapeHtml(session.summary || session.id) + '</strong><span>' + escapeHtml([session.timestamp || '', session.cwd || ''].filter(Boolean).join('  ')) + '</span>';
     button.onclick = () => {
       state.selectedCodexSessionId = session.id;
+      if (session.cwd) $('spawnCwd').value = spawnCwdFromValue(session.cwd);
       renderCodexSessions();
     };
     box.appendChild(button);
