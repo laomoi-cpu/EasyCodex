@@ -285,6 +285,11 @@ func TestSettingsIncludesVersion(t *testing.T) {
 	if !strings.Contains(body, "Current version") || !strings.Contains(body, `id="version"`) {
 		t.Fatalf("expected version field in settings page: %s", body)
 	}
+	if !strings.Contains(body, `id="uiLanguage"`) ||
+		!strings.Contains(body, "Language") ||
+		strings.Contains(body, `class="lang-switch"`) {
+		t.Fatalf("expected language selector only in settings form: %s", body)
+	}
 	if !strings.Contains(body, `href="https://github.com/laomoi-cpu/EasyCodex"`) ||
 		!strings.Contains(body, `class="github-link"`) {
 		t.Fatalf("expected GitHub link in settings page: %s", body)
@@ -329,6 +334,43 @@ func TestGitHubProxyURL(t *testing.T) {
 	}
 	if got := githubProxyURL("EasyCodex-0.0.14.patch.zip"); got != "EasyCodex-0.0.14.patch.zip" {
 		t.Fatalf("relative url = %q", got)
+	}
+}
+
+func TestSettingsLanguageSwitchPersistsConfig(t *testing.T) {
+	cfg := config.Defaults()
+	cfg.Listen = "127.0.0.1:0"
+	cfg.Root = `D:\EasyCodex`
+	cfg.Token = "secret"
+	cfg.UILanguage = "en"
+	path := filepath.Join(t.TempDir(), "config.json")
+	fake := &fakeWezTerm{}
+	srv, err := NewWithConfigPath(cfg, path, fake, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest(http.MethodGet, "/settings?lang=zh", nil)
+	req.RemoteAddr = "127.0.0.1:12345"
+	rec := httptest.NewRecorder()
+
+	srv.Handler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d body = %s", rec.Code, rec.Body.String())
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, `<html lang="zh">`) ||
+		!strings.Contains(body, `id="uiLanguage"`) ||
+		!strings.Contains(body, `currentUILanguage = "zh"`) ||
+		!strings.Contains(body, "界面语言") {
+		t.Fatalf("expected Chinese settings page: %s", body)
+	}
+	loaded, found, err := config.Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !found || loaded.UILanguage != "zh" {
+		t.Fatalf("expected persisted zh language, found=%v cfg=%#v", found, loaded)
 	}
 }
 
@@ -502,9 +544,9 @@ func TestPairingPageIncludesPublicBaseURL(t *testing.T) {
 		t.Fatalf("expected public pairing card: %s", body)
 	}
 	if !strings.Contains(body, "/terminal#baseUrl=") ||
-		!strings.Contains(body, "PC / 手机浏览器访问") ||
+		!strings.Contains(body, "PC / phone browser access") ||
 		!strings.Contains(body, `class="link-field"`) ||
-		!strings.Contains(body, "浏览器扫码打开终端") {
+		!strings.Contains(body, "Browser terminal QR code") {
 		t.Fatalf("expected browser terminal pairing card: %s", body)
 	}
 }
@@ -523,6 +565,8 @@ func TestTerminalPageIsAvailableRemotely(t *testing.T) {
 	body := rec.Body.String()
 	if !strings.Contains(body, "Browser Terminal") ||
 		!strings.Contains(body, "terminalApp") ||
+		strings.Contains(body, `id="uiLanguage"`) ||
+		strings.Contains(body, `class="lang-switch"`) ||
 		!strings.Contains(body, `class="page-terminal"`) ||
 		!strings.Contains(body, ".page-terminal .terminal-output{min-height:62dvh") ||
 		!strings.Contains(body, ".page-terminal .send-row{position:sticky") ||

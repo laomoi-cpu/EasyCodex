@@ -25,6 +25,7 @@ type Config struct {
 	RegenerateTokenOnStart bool           `json:"regenerateTokenOnStart"`
 	LANListenPromptShown   bool           `json:"lanListenPromptShown"`
 	PublicBaseURL          string         `json:"publicBaseUrl"`
+	UILanguage             string         `json:"uiLanguage"`
 	CommandTimeoutSeconds  int            `json:"commandTimeoutSeconds"`
 	AutoLaunch             []string       `json:"autoLaunch"`
 	CloseLaunchedGUIOnExit bool           `json:"closeLaunchedGuiOnExit"`
@@ -144,6 +145,10 @@ func Normalize(cfg *Config) {
 	}
 	cfg.Token = strings.TrimSpace(cfg.Token)
 	cfg.PublicBaseURL = strings.TrimRight(strings.TrimSpace(cfg.PublicBaseURL), "/")
+	cfg.UILanguage = strings.ToLower(strings.TrimSpace(cfg.UILanguage))
+	if cfg.UILanguage == "" {
+		cfg.UILanguage = "en"
+	}
 	for i := range cfg.AutoLaunch {
 		cfg.AutoLaunch[i] = strings.TrimSpace(cfg.AutoLaunch[i])
 	}
@@ -189,6 +194,9 @@ func Validate(cfg Config) error {
 	}
 	if cfg.PublicBaseURL != "" && !strings.HasPrefix(cfg.PublicBaseURL, "http://") && !strings.HasPrefix(cfg.PublicBaseURL, "https://") {
 		return errors.New("public base url must start with http:// or https://")
+	}
+	if cfg.UILanguage != "en" && cfg.UILanguage != "zh" {
+		return errors.New("ui language must be en or zh")
 	}
 	if len(cfg.Instances) == 0 {
 		return errors.New("at least one instance is required")

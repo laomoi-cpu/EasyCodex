@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"easycodex-agent/internal/config"
 	"easycodex-agent/internal/netinfo"
 )
 
@@ -25,7 +26,8 @@ func (s *Server) settingsPage(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusForbidden, fmt.Errorf("settings page is only available from localhost"))
 		return
 	}
-	writeHTML(w, settingsPageHTML())
+	lang := s.updateUILanguageFromSettings(r)
+	writeHTML(w, settingsPageHTML(lang))
 }
 
 func (s *Server) connectionsPage(w http.ResponseWriter, r *http.Request) {
@@ -33,11 +35,13 @@ func (s *Server) connectionsPage(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusForbidden, fmt.Errorf("connections page is only available from localhost"))
 		return
 	}
-	writeHTML(w, connectionsPageHTML())
+	lang := normalizeUILang(s.configSnapshot().UILanguage)
+	writeHTML(w, connectionsPageHTML(lang))
 }
 
 func (s *Server) terminalPage(w http.ResponseWriter, r *http.Request) {
-	writeHTML(w, terminalPageHTML())
+	lang := normalizeUILang(s.configSnapshot().UILanguage)
+	writeHTML(w, terminalPageHTML(lang))
 }
 
 func (s *Server) statusPage(w http.ResponseWriter, r *http.Request) {
@@ -46,61 +50,79 @@ func (s *Server) statusPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	cfg := s.configSnapshot()
+	lang := normalizeUILang(cfg.UILanguage)
 	network := netinfo.Inspect(cfg.Listen)
 	body := fmt.Sprintf(`
 <section class="hero compact">
   <div>
-    <p class="eyebrow">Agent Status</p>
-    <h1>EasyCodex is running</h1>
-    <p class="lead">Local control plane for PC WezTerm sessions and the Android companion.</p>
+    <p class="eyebrow">%s</p>
+    <h1>%s</h1>
+    <p class="lead">%s</p>
   </div>
   <div class="status-card">
     <span class="status-dot"></span>
-    <strong>Online</strong>
+    <strong>%s</strong>
     <small>%s</small>
   </div>
 </section>
 <section class="panel-grid two">
   <article class="panel">
-    <h2>Network</h2>
+    <h2>%s</h2>
     <dl class="kv">
-      <dt>Listen</dt><dd>%s</dd>
-      <dt>Local URL</dt><dd>%s</dd>
-      <dt>Public URL</dt><dd>%s</dd>
-      <dt>LAN</dt><dd>%s</dd>
+      <dt>%s</dt><dd>%s</dd>
+      <dt>%s</dt><dd>%s</dd>
+      <dt>%s</dt><dd>%s</dd>
+      <dt>%s</dt><dd>%s</dd>
     </dl>
   </article>
   <article class="panel">
-    <h2>Configuration</h2>
+    <h2>%s</h2>
     <dl class="kv">
-      <dt>Config file</dt><dd>%s</dd>
-      <dt>Default cwd</dt><dd>%s</dd>
-      <dt>Default instance</dt><dd>%s</dd>
+      <dt>%s</dt><dd>%s</dd>
+      <dt>%s</dt><dd>%s</dd>
+      <dt>%s</dt><dd>%s</dd>
     </dl>
   </article>
 </section>
 <section class="panel pair-section">
   <div class="panel-title-row">
-    <h2>HTTP Service Test</h2>
-    <button id="runNetworkTests" type="button">Test HTTP</button>
+    <h2>%s</h2>
+    <button id="runNetworkTests" type="button">%s</button>
   </div>
-  <p class="pair-hint">Tests the local URL, LAN URLs, and Public Base URL used by pairing QR codes. Tests run in the background and do not block this page.</p>
-  <div id="networkTestState" class="muted-text">Not tested yet.</div>
+  <p class="pair-hint">%s</p>
+  <div id="networkTestState" class="muted-text">%s</div>
   <div id="networkTestResults" class="test-list"></div>
 </section>`,
+		html.EscapeString(lang.t("agentStatus")),
+		html.EscapeString(lang.t("statusRunning")),
+		html.EscapeString(lang.t("statusLead")),
+		html.EscapeString(lang.t("online")),
 		html.EscapeString(timeNow()),
+		html.EscapeString(lang.t("network")),
+		html.EscapeString(lang.t("listen")),
 		html.EscapeString(network.Listen),
+		html.EscapeString(lang.t("localURL")),
 		html.EscapeString(network.LocalURL),
+		html.EscapeString(lang.t("publicURL")),
 		html.EscapeString(emptyDash(cfg.PublicBaseURL)),
+		html.EscapeString(lang.t("lan")),
 		html.EscapeString(strings.Join(network.LANURLs, ", ")),
+		html.EscapeString(lang.t("configuration")),
+		html.EscapeString(lang.t("configFile")),
 		html.EscapeString(s.configPath),
+		html.EscapeString(lang.t("defaultCWD")),
 		html.EscapeString(cfg.MobileDefaults.CWD),
+		html.EscapeString(lang.t("defaultInstance")),
 		html.EscapeString(cfg.MobileDefaults.InstanceID),
+		html.EscapeString(lang.t("httpServiceTest")),
+		html.EscapeString(lang.t("testHTTP")),
+		html.EscapeString(lang.t("httpTestHint")),
+		html.EscapeString(lang.t("notTested")),
 	)
-	writeHTML(w, pageShell("Status", "status", body, `<script>`+statusJS()+`</script>`))
+	writeHTML(w, pageShell(lang, "status", "status", body, `<script>`+statusJS(lang)+`</script>`))
 }
 
-func (s *Server) writePairingConsole(w http.ResponseWriter, baseURLs []string) {
+func (s *Server) writePairingConsole(w http.ResponseWriter, lang uiLang, baseURLs []string) {
 	var cards strings.Builder
 	var browserCards strings.Builder
 	for _, baseURL := range baseURLs {
@@ -112,14 +134,22 @@ func (s *Server) writePairingConsole(w http.ResponseWriter, baseURLs []string) {
   <div class="qr-frame"><img src="%s" alt="Pairing QR"></div>
   <div class="pair-meta">
     <span class="badge">%s</span>
-    <h3>Android App 扫码配对</h3>
-    <p class="pair-hint">这个二维码给 EasyCodex Android App 使用。</p>
-    <label>手机连接地址</label>
+    <h3>%s</h3>
+    <p class="pair-hint">%s</p>
+    <label>%s</label>
     <code>%s</code>
-    <label>App 配对链接</label>
+    <label>%s</label>
     <code>%s</code>
   </div>
-</article>`, html.EscapeString(qrURL), networkBadge(baseURL), html.EscapeString(baseURL), html.EscapeString(deepLink))
+</article>`,
+			html.EscapeString(qrURL),
+			networkBadge(lang, baseURL),
+			html.EscapeString(lang.t("androidScanPair")),
+			html.EscapeString(lang.t("androidScanPairHint")),
+			html.EscapeString(lang.t("agentBaseURL")),
+			html.EscapeString(baseURL),
+			html.EscapeString(lang.t("qrAppLink")),
+			html.EscapeString(deepLink))
 
 		browserURL := baseURL + "/terminal#baseUrl=" + url.QueryEscape(baseURL) + "&token=" + url.QueryEscape(s.configSnapshot().Token)
 		browserQRURL := "/api/pairing/qr.svg?data=" + url.QueryEscape(browserURL)
@@ -128,28 +158,44 @@ func (s *Server) writePairingConsole(w http.ResponseWriter, baseURLs []string) {
   <div class="qr-frame"><img src="%s" alt="Browser Terminal QR"></div>
   <div class="pair-meta">
     <span class="badge">%s</span>
-    <h3>浏览器扫码打开终端</h3>
-    <p class="pair-hint">这个二维码给 PC 浏览器或手机浏览器使用，会自动带上 Token。</p>
-    <label>PC 浏览器访问地址</label>
+    <h3>%s</h3>
+    <p class="pair-hint">%s</p>
+    <label>%s</label>
     <a class="link-field" href="%s">%s</a>
-    <label>扫码完整链接</label>
+    <label>%s</label>
     <code>%s</code>
   </div>
-</article>`, html.EscapeString(browserQRURL), networkBadge(baseURL), html.EscapeString(browserURL), html.EscapeString(baseURL+"/terminal"), html.EscapeString(browserURL))
+</article>`,
+			html.EscapeString(browserQRURL),
+			networkBadge(lang, baseURL),
+			html.EscapeString(lang.t("browserScanOpen")),
+			html.EscapeString(lang.t("browserPairHint")),
+			html.EscapeString(lang.t("pcBrowserURL")),
+			html.EscapeString(browserURL),
+			html.EscapeString(baseURL+"/terminal"),
+			html.EscapeString(lang.t("qrFullLink")),
+			html.EscapeString(browserURL))
 	}
 
 	body := fmt.Sprintf(`
 <section class="hero">
   <div>
-    <p class="eyebrow">EasyCodex Pairing</p>
-    <h1>扫码连接手机 App，也可以直接用浏览器打开终端。</h1>
-    <p class="lead">Android App 请扫 App 配对二维码；PC 浏览器或手机浏览器请扫浏览器终端二维码。公网或 Tailscale 地址可在 Settings 里配置 Public Base URL。</p>
+    <p class="eyebrow">%s</p>
+    <h1>%s</h1>
+    <p class="lead">%s</p>
   </div>
   <img class="hero-mark" src="/assets/easycodex.svg" alt="">
 </section>
-<section class="panel pair-section"><h2>Android App 配对二维码</h2><div class="pair-grid">%s</div></section>
-<section class="panel pair-section"><h2>PC / 手机浏览器访问</h2><div class="pair-grid">%s</div></section>`, cards.String(), browserCards.String())
-	writeHTML(w, pageShell("Pairing", "pairing", body, ""))
+<section class="panel pair-section"><h2>%s</h2><div class="pair-grid">%s</div></section>
+<section class="panel pair-section"><h2>%s</h2><div class="pair-grid">%s</div></section>`,
+		html.EscapeString(lang.t("pairing")),
+		html.EscapeString(lang.t("pairingTitle")),
+		html.EscapeString(lang.t("pairingLead")),
+		html.EscapeString(lang.t("androidPairTitle")),
+		cards.String(),
+		html.EscapeString(lang.t("browserPairTitle")),
+		browserCards.String())
+	writeHTML(w, pageShell(lang, "pairing", "pairing", body, ""))
 }
 
 func (s *Server) easycodexIcon(w http.ResponseWriter, r *http.Request) {
@@ -162,7 +208,22 @@ func writeHTML(w http.ResponseWriter, body string) {
 	_, _ = w.Write([]byte(body))
 }
 
-func pageShell(title, active, body, script string) string {
+func (s *Server) updateUILanguageFromSettings(r *http.Request) uiLang {
+	cfg := s.configSnapshot()
+	if raw := r.URL.Query().Get("lang"); raw != "" {
+		lang := normalizeUILang(raw)
+		if cfg.UILanguage != string(lang) {
+			cfg.UILanguage = string(lang)
+			if err := config.Save(s.configPath, cfg); err == nil {
+				s.setConfig(cfg)
+			}
+		}
+		return lang
+	}
+	return normalizeUILang(cfg.UILanguage)
+}
+
+func pageShell(lang uiLang, titleKey, active, body, script string) string {
 	nav := func(id, href, label string) string {
 		class := ""
 		if id == active {
@@ -170,8 +231,9 @@ func pageShell(title, active, body, script string) string {
 		}
 		return fmt.Sprintf(`<a%s href="%s">%s</a>`, class, href, label)
 	}
+	title := lang.t(titleKey)
 	return `<!doctype html>
-<html lang="en">
+<html lang="` + html.EscapeString(string(lang)) + `">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -182,7 +244,7 @@ func pageShell(title, active, body, script string) string {
 <body class="page-` + html.EscapeString(active) + `">
 <header class="topbar">
   <a class="brand" href="/pairing"><img src="/assets/easycodex.svg" alt=""><span>EasyCodex</span></a>
-  <nav>` + nav("pairing", "/pairing", "Pairing") + nav("connections", "/connections", "Connections") + nav("settings", "/settings", "Settings") + nav("status", "/status", "Status") + `<span class="version-badge">v` + html.EscapeString(AppVersion) + `</span><a class="github-link" href="https://github.com/laomoi-cpu/EasyCodex" target="_blank" rel="noreferrer">GitHub</a></nav>
+  <nav>` + nav("pairing", "/pairing", html.EscapeString(lang.t("navPairing"))) + nav("connections", "/connections", html.EscapeString(lang.t("connections"))) + nav("settings", "/settings", html.EscapeString(lang.t("settings"))) + nav("status", "/status", html.EscapeString(lang.t("status"))) + `<span class="version-badge">v` + html.EscapeString(AppVersion) + `</span><a class="github-link" href="https://github.com/laomoi-cpu/EasyCodex" target="_blank" rel="noreferrer">` + html.EscapeString(lang.t("github")) + `</a></nav>
 </header>
 <main>` + body + `</main>
 ` + script + `
@@ -211,43 +273,55 @@ func localMachineName() string {
 	return name
 }
 
-func connectionsPageHTML() string {
-	body := `
+func connectionsPageHTML(lang uiLang) string {
+	body := fmt.Sprintf(`
 <section class="hero compact">
   <div>
-    <p class="eyebrow">Connected Terminals</p>
-    <h1>查看当前接入 EasyCodex 的终端。</h1>
-    <p class="lead">这里会记录已经通过 Token 访问过 Agent API 的浏览器终端、Android App 和其它 API 客户端。</p>
+    <p class="eyebrow">%s</p>
+    <h1>%s</h1>
+    <p class="lead">%s</p>
   </div>
-  <div id="connectionsState" class="status-card muted">Loading...</div>
+  <div id="connectionsState" class="status-card muted">%s</div>
 </section>
 <section class="panel">
   <div class="panel-title-row">
-    <h2>连接列表</h2>
-    <button type="button" class="secondary" id="refreshConnections">Refresh</button>
+    <h2>%s</h2>
+    <button type="button" class="secondary" id="refreshConnections">%s</button>
   </div>
   <div class="table-wrap">
     <table class="connection-table">
       <thead>
         <tr>
-          <th>终端</th>
-          <th>类型</th>
-          <th>地址</th>
-          <th>最后访问</th>
-          <th>最后请求</th>
-          <th>次数</th>
+          <th>%s</th>
+          <th>%s</th>
+          <th>%s</th>
+          <th>%s</th>
+          <th>%s</th>
+          <th>%s</th>
         </tr>
       </thead>
       <tbody id="connectionsBody"></tbody>
     </table>
   </div>
-</section>`
-	script := `<script>` + connectionsJS() + `</script>`
-	return pageShell("Connections", "connections", body, script)
+</section>`,
+		html.EscapeString(lang.t("connectedTerminals")),
+		html.EscapeString(lang.t("connectionsTitle")),
+		html.EscapeString(lang.t("connectionsLead")),
+		html.EscapeString(lang.t("loading")),
+		html.EscapeString(lang.t("connectionsList")),
+		html.EscapeString(lang.t("refresh")),
+		html.EscapeString(lang.t("terminal")),
+		html.EscapeString(lang.t("typeLabel")),
+		html.EscapeString(lang.t("address")),
+		html.EscapeString(lang.t("lastSeen")),
+		html.EscapeString(lang.t("lastRequest")),
+		html.EscapeString(lang.t("count")))
+	script := `<script>` + connectionsJS(lang) + `</script>`
+	return pageShell(lang, "connections", "connections", body, script)
 }
 
-func statusJS() string {
-	return `
+func statusJS(lang uiLang) string {
+	return jsI18N(lang) + `
 const statusTestButton = document.getElementById('runNetworkTests');
 const statusTestState = document.getElementById('networkTestState');
 const statusTestResults = document.getElementById('networkTestResults');
@@ -255,13 +329,13 @@ function setNetworkTestState(text){ statusTestState.textContent = text; }
 function renderNetworkTestRows(items, pending){
   statusTestResults.innerHTML = '';
   if(!items.length){
-    statusTestResults.innerHTML = '<div class="muted-text">No URLs to test.</div>';
+    statusTestResults.innerHTML = '<div class="muted-text">' + escapeHtml(i18n.noURLs) + '</div>';
     return;
   }
   items.forEach(item => {
     const row = document.createElement('div');
     row.className = 'test-row ' + (pending ? '' : (item.ok ? 'ok' : 'err'));
-    const status = pending ? 'Testing' : (item.ok ? 'OK' : 'Failed');
+    const status = pending ? i18n.testing : (item.ok ? i18n.ok : i18n.failed);
     const latency = pending ? '-' : (item.latencyMs + ' ms');
     const error = pending ? '' : (item.error || item.service || '');
     row.innerHTML = '<strong>' + escapeHtml(item.label || '-') + '</strong>' +
@@ -274,16 +348,16 @@ function renderNetworkTestRows(items, pending){
 }
 async function runNetworkTests(){
   statusTestButton.disabled = true;
-  setNetworkTestState('Testing HTTP endpoints...');
+  setNetworkTestState(i18n.testingHTTP);
   renderNetworkTestRows([], true);
   try{
     const res = await fetch('/api/network-tests');
     const payload = await res.json();
-    if(!payload.ok) throw new Error(payload.error || 'Network test failed');
+    if(!payload.ok) throw new Error(payload.error || i18n.networkTestFailed);
     const data = payload.data || {};
     renderNetworkTestRows(data.results || [], false);
     const okCount = (data.results || []).filter(item => item.ok).length;
-    setNetworkTestState(okCount + ' / ' + ((data.results || []).length) + ' endpoint(s) OK');
+    setNetworkTestState(format(i18n.endpointOK, {ok: okCount, total: ((data.results || []).length)}));
   }catch(err){
     setNetworkTestState(err.message);
   }finally{
@@ -292,23 +366,24 @@ async function runNetworkTests(){
 }
 function escapeHtml(v){ return String(v).replace(/[&<>"']/g, ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch])); }
 function escapeAttr(v){ return escapeHtml(v); }
+function format(text, values){ return String(text).replace(/\{(\w+)\}/g, (_, key)=>values[key] ?? ''); }
 statusTestButton.addEventListener('click', runNetworkTests);
 `
 }
 
-func terminalPageHTML() string {
-	body := `
+func terminalPageHTML(lang uiLang) string {
+	body := fmt.Sprintf(`
 <section class="terminal-page">
   <section id="connectPanel" class="panel terminal-connect">
     <div>
-      <p class="eyebrow">Browser Terminal</p>
-      <h1>Control Codex from any browser.</h1>
-      <p class="lead">Use the same Agent URL and token as the Android app. QR links from Pairing can fill these fields automatically.</p>
+      <p class="eyebrow">%s</p>
+      <h1>%s</h1>
+      <p class="lead">%s</p>
     </div>
     <form id="connectForm" class="connect-form">
-      <label><span>Agent Base URL</span><input id="baseUrl" autocomplete="off" placeholder="http://192.168.x.x:8765"></label>
-      <label><span>Token</span><input id="browserToken" autocomplete="off" placeholder="easycodex-dev-token"></label>
-      <button type="submit">Connect</button>
+      <label><span>%s</span><input id="baseUrl" autocomplete="off" placeholder="http://192.168.x.x:8765"></label>
+      <label><span>%s</span><input id="browserToken" autocomplete="off" placeholder="easycodex-dev-token"></label>
+      <button type="submit">%s</button>
     </form>
   </section>
 
@@ -316,16 +391,16 @@ func terminalPageHTML() string {
     <aside class="terminal-sidebar">
       <div class="terminal-toolbar">
         <button id="newSession" type="button">+</button>
-        <button id="refreshSessions" type="button" class="secondary">Refresh</button>
+        <button id="refreshSessions" type="button" class="secondary">%s</button>
       </div>
       <div id="paneList" class="pane-list"></div>
     </aside>
     <section class="terminal-workbench">
       <div class="terminal-statusbar">
-        <button id="connectionStatus" type="button" class="status-pill">Offline</button>
-        <button id="editConnection" type="button" class="secondary">Settings</button>
+        <button id="connectionStatus" type="button" class="status-pill">%s</button>
+        <button id="editConnection" type="button" class="secondary">%s</button>
       </div>
-      <pre id="terminalOutput" class="terminal-output">Connect, then select a pane.</pre>
+      <pre id="terminalOutput" class="terminal-output">%s</pre>
       <div id="keyPanel" class="key-panel" hidden>
         <button data-key="enter" type="button">Enter</button>
         <button data-key="ctrlc" type="button">Ctrl+C</button>
@@ -338,106 +413,161 @@ func terminalPageHTML() string {
         <button data-key="esc" type="button">Esc</button>
       </div>
       <form id="sendForm" class="send-row">
-        <input id="commandInput" autocomplete="off" placeholder="Message">
+        <input id="commandInput" autocomplete="off" placeholder="%s">
         <button id="toggleKeys" type="button" class="secondary">⌘</button>
-        <button type="submit">Send</button>
+        <button type="submit">%s</button>
       </form>
     </section>
   </section>
 </section>
 
 <dialog id="paneDialog" class="pane-dialog">
-  <h2 id="dialogTitle">Session</h2>
+  <h2 id="dialogTitle">%s</h2>
   <dl id="dialogDetails" class="kv"></dl>
   <div class="dialog-actions">
-    <button id="dialogClose" type="button" class="secondary">Close</button>
-    <button id="dialogDelete" type="button" class="danger">Delete</button>
-    <button id="dialogClone" type="button">Clone</button>
+    <button id="dialogClose" type="button" class="secondary">%s</button>
+    <button id="dialogDelete" type="button" class="danger">%s</button>
+    <button id="dialogClone" type="button">%s</button>
   </div>
 </dialog>
 <dialog id="connectionDialog" class="pane-dialog">
-  <h2>Server Settings</h2>
+  <h2>%s</h2>
   <div class="connect-form">
-    <label><span>Agent Base URL</span><input id="dialogBaseUrl" autocomplete="off" placeholder="http://192.168.x.x:8765"></label>
-    <label><span>Token</span><input id="dialogToken" autocomplete="off" placeholder="easycodex-dev-token"></label>
+    <label><span>%s</span><input id="dialogBaseUrl" autocomplete="off" placeholder="http://192.168.x.x:8765"></label>
+    <label><span>%s</span><input id="dialogToken" autocomplete="off" placeholder="easycodex-dev-token"></label>
   </div>
   <div class="dialog-actions">
-    <button id="connectionCancel" type="button" class="secondary">Cancel</button>
-    <button id="connectionSave" type="button">Save</button>
+    <button id="connectionCancel" type="button" class="secondary">%s</button>
+    <button id="connectionSave" type="button">%s</button>
   </div>
-</dialog>`
-	script := `<script>` + terminalJS() + `</script>`
-	return pageShell("Terminal", "terminal", body, script)
+</dialog>`,
+		html.EscapeString(lang.t("browserTerminal")),
+		html.EscapeString(lang.t("connectTitle")),
+		html.EscapeString(lang.t("connectHint")),
+		html.EscapeString(lang.t("agentBaseURL")),
+		html.EscapeString(lang.t("token")),
+		html.EscapeString(lang.t("connect")),
+		html.EscapeString(lang.t("refresh")),
+		html.EscapeString(lang.t("offline")),
+		html.EscapeString(lang.t("settingsShort")),
+		html.EscapeString(lang.t("terminalPrompt")),
+		html.EscapeString(lang.t("messagePlaceholder")),
+		html.EscapeString(lang.t("send")),
+		html.EscapeString(lang.t("sessionPrefix")),
+		html.EscapeString(lang.t("close")),
+		html.EscapeString(lang.t("delete")),
+		html.EscapeString(lang.t("clone")),
+		html.EscapeString(lang.t("serverSettings")),
+		html.EscapeString(lang.t("agentBaseURL")),
+		html.EscapeString(lang.t("token")),
+		html.EscapeString(lang.t("cancel")),
+		html.EscapeString(lang.t("save")))
+	script := `<script>` + terminalJS(lang) + `</script>`
+	return pageShell(lang, "terminal", "terminal", body, script)
 }
 
-func settingsPageHTML() string {
-	body := `
+func settingsPageHTML(lang uiLang) string {
+	body := fmt.Sprintf(`
 <section class="hero compact">
   <div>
-    <p class="eyebrow">Agent Settings</p>
-    <h1>Configure PC agent and mobile defaults.</h1>
-    <p class="lead">Changes are saved to the Agent config file. Mobile defaults, token, and instance list apply immediately; listen address and startup token behavior apply after restarting the Agent.</p>
+    <p class="eyebrow">%s</p>
+    <h1>%s</h1>
+    <p class="lead">%s</p>
   </div>
-  <div id="saveState" class="status-card muted">Loading...</div>
+  <div id="saveState" class="status-card muted">%s</div>
 </section>
 <form id="settingsForm" class="settings-layout">
   <section class="panel">
-    <h2>Network</h2>
+    <h2>%s</h2>
     <div class="field-grid">
-      <label><span>Listen address</span><input id="listen" autocomplete="off" placeholder="0.0.0.0:8765"></label>
-      <label><span>API token</span><input id="token" autocomplete="off"></label>
-      <label><span>Public Base URL</span><input id="publicBaseUrl" autocomplete="off" placeholder="http://100.x.y.z:8765"></label>
-      <label><span>EasyCodex root</span><input id="root" autocomplete="off"></label>
-      <label><span>Command timeout seconds</span><input id="timeout" type="number" min="1" max="120"></label>
-      <label><span>Current version</span><input id="version" readonly></label>
+      <label><span>%s</span><input id="listen" autocomplete="off" placeholder="0.0.0.0:8765"></label>
+      <label><span>%s</span><input id="token" autocomplete="off"></label>
+      <label><span>%s</span><input id="publicBaseUrl" autocomplete="off" placeholder="http://100.x.y.z:8765"></label>
+      <label><span>%s</span><input id="root" autocomplete="off"></label>
+      <label><span>%s</span><input id="timeout" type="number" min="1" max="120"></label>
+      <label><span>%s</span><input id="version" readonly></label>
+      <label><span>%s</span><select id="uiLanguage"><option value="zh">%s</option><option value="en">%s</option></select></label>
     </div>
-    <label class="check-row"><input id="regenToken" type="checkbox"><span>Regenerate API token every Agent startup</span></label>
-    <label class="check-row"><input id="lanPromptShown" type="checkbox"><span>Do not show LAN listen setup prompt again</span></label>
-    <label class="check-row"><input id="closeGui" type="checkbox"><span>Close GUI windows launched by Agent when Agent exits</span></label>
+    <label class="check-row"><input id="regenToken" type="checkbox"><span>%s</span></label>
+    <label class="check-row"><input id="lanPromptShown" type="checkbox"><span>%s</span></label>
+    <label class="check-row"><input id="closeGui" type="checkbox"><span>%s</span></label>
   </section>
 
   <section class="panel">
-    <h2>Version Update</h2>
-    <div id="updateState" class="update-state muted">Click Check Update to compare with the latest GitHub release.</div>
+    <h2>%s</h2>
+    <div id="updateState" class="update-state muted">%s</div>
     <div class="update-progress"><div id="updateProgressBar"></div></div>
-    <div id="updateProgressText" class="muted-text">No update running.</div>
-    <label class="check-row update-option"><input id="useGitHubProxy" type="checkbox" checked><span>Use GH acceleration proxy for update download</span></label>
-    <a id="releaseLink" class="link-field update-link" href="#" target="_blank" rel="noreferrer" hidden>Open release page</a>
+    <div id="updateProgressText" class="muted-text">%s</div>
+    <label class="check-row update-option"><input id="useGitHubProxy" type="checkbox" checked><span>%s</span></label>
+    <a id="releaseLink" class="link-field update-link" href="#" target="_blank" rel="noreferrer" hidden>%s</a>
     <div class="dialog-actions update-actions">
-      <button type="button" class="secondary" id="checkUpdate">Check Update</button>
-      <button type="button" id="applyUpdate" disabled>Update and Restart</button>
+      <button type="button" class="secondary" id="checkUpdate">%s</button>
+      <button type="button" id="applyUpdate" disabled>%s</button>
     </div>
   </section>
 
   <section class="panel">
     <div class="panel-title-row">
-      <h2>Instances</h2>
-      <button type="button" class="secondary" id="addInstance">Add Instance</button>
+      <h2>%s</h2>
+      <button type="button" class="secondary" id="addInstance">%s</button>
     </div>
     <div id="instances" class="instance-list"></div>
   </section>
 
   <section class="panel">
-    <h2>Mobile New Session Defaults</h2>
+    <h2>%s</h2>
     <div class="field-grid">
-      <label><span>Default instance</span><select id="defaultInstance"></select></label>
-      <label><span>Working directory</span><input id="defaultCwd" autocomplete="off" placeholder="D:\mgame"></label>
+      <label><span>%s</span><select id="defaultInstance"></select></label>
+      <label><span>%s</span><input id="defaultCwd" autocomplete="off" placeholder="D:\mgame"></label>
     </div>
-    <label><span>Command arguments, one per line</span><textarea id="defaultCommand" rows="5" spellcheck="false"></textarea></label>
+    <label><span>%s</span><textarea id="defaultCommand" rows="5" spellcheck="false"></textarea></label>
   </section>
 
   <section class="panel">
-    <h2>Auto Launch</h2>
+    <h2>%s</h2>
     <div id="autoLaunch" class="choice-list"></div>
   </section>
 
   <div class="actionbar">
-    <button type="button" class="secondary" id="reload">Reload</button>
-    <button type="submit">Save Settings</button>
+    <button type="button" class="secondary" id="reload">%s</button>
+    <button type="submit">%s</button>
   </div>
-</form>`
-	script := `<script>` + settingsJS() + `</script>`
-	return pageShell("Settings", "settings", body, script)
+</form>`,
+		html.EscapeString(lang.t("agentSettings")),
+		html.EscapeString(lang.t("configureTitle")),
+		html.EscapeString(lang.t("configureLead")),
+		html.EscapeString(lang.t("loading")),
+		html.EscapeString(lang.t("network")),
+		html.EscapeString(lang.t("listenAddress")),
+		html.EscapeString(lang.t("agentToken")),
+		html.EscapeString(lang.t("publicBaseURL")),
+		html.EscapeString(lang.t("easyRoot")),
+		html.EscapeString(lang.t("commandTimeout")),
+		html.EscapeString(lang.t("currentVersion")),
+		html.EscapeString(lang.t("uiLanguage")),
+		html.EscapeString(lang.t("chinese")),
+		html.EscapeString(lang.t("english")),
+		html.EscapeString(lang.t("regenToken")),
+		html.EscapeString(lang.t("lanPrompt")),
+		html.EscapeString(lang.t("closeGui")),
+		html.EscapeString(lang.t("versionUpdate")),
+		html.EscapeString(lang.t("updateInitial")),
+		html.EscapeString(lang.t("updateNoRunning")),
+		html.EscapeString(lang.t("githubProxy")),
+		html.EscapeString(lang.t("openRelease")),
+		html.EscapeString(lang.t("checkUpdate")),
+		html.EscapeString(lang.t("applyUpdate")),
+		html.EscapeString(lang.t("instances")),
+		html.EscapeString(lang.t("addInstance")),
+		html.EscapeString(lang.t("mobileDefaults")),
+		html.EscapeString(lang.t("defaultInstance")),
+		html.EscapeString(lang.t("workingDirectory")),
+		html.EscapeString(lang.t("commandArguments")),
+		html.EscapeString(lang.t("autoLaunch")),
+		html.EscapeString(lang.t("reload")),
+		html.EscapeString(lang.t("saveSettings")))
+	script := `<script>const currentUILanguage = "` + html.EscapeString(string(lang)) + `";</script><script>` + settingsJS(lang) + `</script>`
+	return pageShell(lang, "settings", "settings", body, script)
 }
 
 func consoleCSS() string {
@@ -456,28 +586,28 @@ main{max-width:1180px;margin:0 auto;padding:28px}.hero{display:flex;justify-cont
 button{border:0;border-radius:7px;background:var(--accent);color:#fff;font-weight:700;padding:10px 16px;cursor:pointer}button:hover{filter:brightness(.96)}button.secondary{background:#fff;color:#344054;border:1px solid #cfd6df}.remove{background:#fff4ed;color:#b54708;border:1px solid #fed7aa}.status-card{padding:16px;min-width:220px}.status-card.muted{color:var(--muted)}.status-dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:#12b76a;margin-right:8px}.status-card small{display:block;color:var(--muted);margin-top:4px}.kv{display:grid;grid-template-columns:145px minmax(0,1fr);gap:10px;margin:0}.kv dt{color:var(--muted)}.kv dd{margin:0}
 .pair-section{margin-top:16px}.pair-section h2{margin-bottom:16px}.terminal-page{display:grid;gap:16px}.terminal-connect{display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:22px;align-items:end}.connect-form{display:grid;gap:12px}.terminal-app{display:grid;grid-template-columns:280px minmax(0,1fr);gap:14px;height:calc(100vh - 122px);min-height:620px}.terminal-sidebar,.terminal-workbench{background:#fff;border:1px solid var(--line);border-radius:8px;box-shadow:var(--shadow);min-height:0}.terminal-sidebar{display:flex;flex-direction:column;padding:12px}.terminal-toolbar{display:grid;grid-template-columns:48px 1fr;gap:8px;margin-bottom:10px}.pane-list{display:grid;gap:8px;overflow:auto}.pane-item{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center;padding:9px;border:1px solid var(--line);border-radius:7px;background:#f8fafc;text-align:left;color:#18212f}.pane-item.active{background:#dbeafe;border-color:#93c5fd}.pane-item.selected{outline:2px solid #2563eb}.pane-main{display:block;min-width:0}.pane-title{display:block;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.pane-meta{display:block;color:var(--muted);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.pane-menu{padding:7px 9px}.terminal-workbench{display:grid;grid-template-rows:auto minmax(0,1fr) auto auto;padding:12px;gap:10px}.terminal-statusbar{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px}.status-pill{background:#e5e7eb;color:#374151;border:1px solid #d1d5db}.status-pill.ok{background:#d1fae5;color:#065f46;border-color:#86efac}.status-pill.work{background:#dbeafe;color:#1d4ed8;border-color:#93c5fd}.status-pill.err{background:#fee2e2;color:#991b1b;border-color:#fca5a5}.terminal-output{margin:0;overflow:auto;background:#0b1220;color:#e6edf3;border-radius:8px;padding:14px;font:13px/1.45 Consolas,"Cascadia Mono",monospace;white-space:pre-wrap;word-break:break-word}.send-row{display:grid;grid-template-columns:minmax(0,1fr) 54px 92px;gap:8px}.send-row input{height:44px}.key-panel{display:grid;grid-template-columns:repeat(9,minmax(0,1fr));gap:6px}.key-panel[hidden]{display:none!important}.key-panel button{padding:7px 6px;font-size:12px}.pane-dialog{border:1px solid var(--line);border-radius:8px;box-shadow:var(--shadow);max-width:560px;width:calc(100% - 28px);padding:18px}.pane-dialog h2{margin:0 0 14px}.dialog-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:16px}.danger{background:#fee2e2!important;color:#991b1b!important;border:1px solid #fca5a5!important}
 @media(max-width:760px){.topbar{padding:0 14px}.brand span{display:none}nav{gap:2px}nav a{padding:7px 8px;font-size:12px}main{padding:12px}.hero{display:block}.hero-mark{display:none}.settings-layout,.panel-grid.two{grid-template-columns:1fr}.field-grid{grid-template-columns:1fr}.pair-card{grid-template-columns:1fr}.instance-row{grid-template-columns:1fr}.actionbar{position:sticky;bottom:0;background:var(--bg);padding:12px 0}.test-row{grid-template-columns:1fr}.terminal-connect{grid-template-columns:1fr}.terminal-app{grid-template-columns:1fr;height:calc(100vh - 88px);min-height:0}.terminal-sidebar{max-height:128px;padding:8px}.pane-list{display:flex;overflow:auto}.pane-item{min-width:180px}.terminal-workbench{min-height:0}.terminal-output{font-size:12px;padding:10px}.send-row{grid-template-columns:minmax(0,1fr) 48px 74px}.key-panel{grid-template-columns:repeat(3,minmax(0,1fr))}}
-@media(max-width:760px){.page-terminal{background:#0b1220;overflow:auto}.page-terminal .topbar{display:none}.page-terminal main{max-width:none;min-height:100dvh;padding:0;background:#0b1220}.page-terminal .terminal-page{min-height:100dvh;display:block}.page-terminal .terminal-connect{min-height:100dvh;display:grid;grid-template-columns:1fr;align-content:center;border:0;border-radius:0;box-shadow:none;padding:18px;background:#f8fafc}.page-terminal .terminal-connect h1{font-size:24px}.page-terminal .terminal-connect .lead{font-size:13px}.page-terminal .terminal-app{min-height:100dvh;display:flex;flex-direction:column;gap:0;background:#0b1220}.page-terminal .terminal-sidebar{border:0;border-radius:0;box-shadow:none;max-height:none;min-height:0;padding:6px;background:#f8fafc;display:grid;grid-template-columns:auto minmax(0,1fr);gap:6px;align-items:center}.page-terminal .terminal-toolbar{display:flex;gap:5px;margin:0;min-width:max-content}.page-terminal .terminal-toolbar button{height:30px;padding:0 8px;font-size:11px;flex:0 0 auto}.page-terminal #newSession{width:32px;padding:0}.page-terminal #refreshSessions{width:58px;padding:0}.page-terminal .pane-list{display:flex;gap:5px;min-width:0;overflow-x:auto;overflow-y:hidden;padding:1px 2px 3px;scrollbar-width:thin;-webkit-overflow-scrolling:touch}.page-terminal .pane-item{min-width:118px;max-width:160px;padding:5px 7px;border-radius:7px;flex:0 0 auto}.page-terminal .pane-title{font-size:11px}.page-terminal .pane-meta{display:none}.page-terminal .pane-menu{padding:2px 4px}.page-terminal .terminal-workbench{flex:1;min-height:0;border:0;border-radius:0;box-shadow:none;display:flex;flex-direction:column;gap:6px;padding:7px;background:#0b1220}.page-terminal .terminal-statusbar{display:grid;grid-template-columns:minmax(0,1fr) 40px;gap:6px;order:0}.page-terminal .terminal-statusbar button{height:30px;padding:0 8px;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.page-terminal #editConnection{font-size:0}.page-terminal #editConnection::before{content:"Set";font-size:11px}.page-terminal .terminal-output{min-height:62dvh;max-height:none;border-radius:0;padding:10px;font-size:12px;line-height:1.42;background:#0b1220;overflow:auto;flex:1}.page-terminal .key-panel{grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;background:#111827;padding:7px;border-radius:7px;order:2}.page-terminal .key-panel button{height:30px;padding:0 4px;font-size:11px}.page-terminal .send-row{position:sticky;bottom:0;z-index:4;grid-template-columns:minmax(0,1fr) 42px 58px;gap:6px;order:3;background:#0b1220;padding:6px 0 7px}.page-terminal .send-row input{height:42px;border-radius:7px;font-size:14px}.page-terminal .send-row button{height:42px;padding:0 8px;font-size:12px}.page-terminal .pane-dialog{width:calc(100% - 18px);padding:14px}}`
+@media(max-width:760px){.page-terminal{background:#0b1220;overflow:auto}.page-terminal .topbar{display:none}.page-terminal main{max-width:none;min-height:100dvh;padding:0;background:#0b1220}.page-terminal .terminal-page{min-height:100dvh;display:block}.page-terminal .terminal-connect{min-height:100dvh;display:grid;grid-template-columns:1fr;align-content:center;border:0;border-radius:0;box-shadow:none;padding:18px;background:#f8fafc}.page-terminal .terminal-connect h1{font-size:24px}.page-terminal .terminal-connect .lead{font-size:13px}.page-terminal .terminal-app{min-height:100dvh;display:flex;flex-direction:column;gap:0;background:#0b1220}.page-terminal .terminal-sidebar{border:0;border-radius:0;box-shadow:none;max-height:none;min-height:0;padding:6px;background:#f8fafc;display:grid;grid-template-columns:auto minmax(0,1fr);gap:6px;align-items:center}.page-terminal .terminal-toolbar{display:flex;gap:5px;margin:0;min-width:max-content}.page-terminal .terminal-toolbar button{height:30px;padding:0 8px;font-size:11px;flex:0 0 auto}.page-terminal #newSession{width:32px;padding:0}.page-terminal #refreshSessions{width:58px;padding:0}.page-terminal .pane-list{display:flex;gap:5px;min-width:0;overflow-x:auto;overflow-y:hidden;padding:1px 2px 3px;scrollbar-width:thin;-webkit-overflow-scrolling:touch}.page-terminal .pane-item{min-width:118px;max-width:160px;padding:5px 7px;border-radius:7px;flex:0 0 auto}.page-terminal .pane-title{font-size:11px}.page-terminal .pane-meta{display:none}.page-terminal .pane-menu{padding:2px 4px}.page-terminal .terminal-workbench{flex:1;min-height:0;border:0;border-radius:0;box-shadow:none;display:flex;flex-direction:column;gap:6px;padding:7px;background:#0b1220}.page-terminal .terminal-statusbar{display:grid;grid-template-columns:minmax(0,1fr) 40px;gap:6px;order:0}.page-terminal .terminal-statusbar button{height:30px;padding:0 8px;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.page-terminal .terminal-output{min-height:62dvh;max-height:none;border-radius:0;padding:10px;font-size:12px;line-height:1.42;background:#0b1220;overflow:auto;flex:1}.page-terminal .key-panel{grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;background:#111827;padding:7px;border-radius:7px;order:2}.page-terminal .key-panel button{height:30px;padding:0 4px;font-size:11px}.page-terminal .send-row{position:sticky;bottom:0;z-index:4;grid-template-columns:minmax(0,1fr) 42px 58px;gap:6px;order:3;background:#0b1220;padding:6px 0 7px}.page-terminal .send-row input{height:42px;border-radius:7px;font-size:14px}.page-terminal .send-row button{height:42px;padding:0 8px;font-size:12px}.page-terminal .pane-dialog{width:calc(100% - 18px);padding:14px}}`
 }
 
-func connectionsJS() string {
-	return `
+func connectionsJS(lang uiLang) string {
+	return jsI18N(lang) + `
 const $ = id => document.getElementById(id);
 function setState(text, kind='muted'){ const el=$('connectionsState'); el.className='status-card '+kind; el.textContent=text; }
 async function loadConnections(){
-  setState('Loading...');
+  setState(i18n.loading);
   const res = await fetch('/api/connections');
   const payload = await res.json();
   if (!payload.ok) throw new Error(payload.error || 'Load failed');
   const items = (payload.data && payload.data.connections) || [];
   renderConnections(items);
-  setState(items.length + ' terminal(s)');
+  setState(items.length + ' ' + i18n.terminal.toLowerCase() + '(s)');
 }
 function renderConnections(items){
   const body = $('connectionsBody');
   body.innerHTML = '';
   if (!items.length) {
     const row = document.createElement('tr');
-    row.innerHTML = '<td colspan="6" class="muted-text">还没有浏览器或 Android App 通过 Token 访问 Agent。</td>';
+    row.innerHTML = '<td colspan="6" class="muted-text">' + escapeHtml(i18n.connectionsEmpty) + '</td>';
     body.appendChild(row);
     return;
   }
@@ -501,8 +631,8 @@ setInterval(() => loadConnections().catch(err => setState(err.message, 'error'))
 `
 }
 
-func terminalJS() string {
-	return `
+func terminalJS(lang uiLang) string {
+	return jsI18N(lang) + `
 const $ = id => document.getElementById(id);
 const store = window.localStorage;
 const ansiColors = [0x0b1220,0xdc2626,0x16a34a,0xd97706,0x2563eb,0xc026d3,0x0891b2,0xe6edf3,0x64748b,0xef4444,0x22c55e,0xf59e0b,0x60a5fa,0xe879f9,0x22d3ee,0xffffff];
@@ -582,23 +712,23 @@ async function api(path, options, auth){
     body: options.body === undefined ? undefined : JSON.stringify(options.body)
   });
   let payload = {};
-  try { payload = await res.json(); } catch (err) { throw new Error('Invalid JSON from Agent'); }
+  try { payload = await res.json(); } catch (err) { throw new Error(i18n.invalidJSON); }
   if (!res.ok || !payload.ok) throw new Error(payload.error || ('HTTP ' + res.status));
   return payload.data || {};
 }
 async function connect(){
   saveConnectionFields();
-  setStatus('Connecting', 'work');
+  setStatus(i18n.connecting, 'work');
   await api('/api/health', {}, false);
   const cfg = await api('/api/config', {}, true);
   state.defaults = cfg.defaults || state.defaults;
   state.instanceId = state.defaults.instanceId || 'main';
   showConnect(false);
-  setStatus('Connected', 'ok');
+  setStatus(i18n.alreadyConnected, 'ok');
   await loadSessions();
 }
 async function loadSessions(){
-  setStatus('Loading sessions', 'work');
+  setStatus(i18n.loadingSessions, 'work');
   const data = await api('/api/instances/' + encodeURIComponent(state.instanceId) + '/sessions', {}, true);
   state.panes = data.panes || [];
   renderPanes();
@@ -610,8 +740,8 @@ async function loadSessions(){
   } else {
     stopPolling();
     state.paneId = '';
-    $('terminalOutput').textContent = 'No panes available.';
-    setStatus('No panes', '');
+    $('terminalOutput').textContent = i18n.noPanes;
+    setStatus(i18n.noPanes, '');
   }
 }
 function renderPanes(){
@@ -648,7 +778,7 @@ function selectPane(paneId){
   state.snapshotHash = '';
   state.pollToken++;
   renderPanes();
-  $('terminalOutput').textContent = 'Loading pane ' + paneId + '...';
+  $('terminalOutput').textContent = format(i18n.loadingPane, {id: paneId});
   pollSnapshot(state.pollToken);
 }
 async function pollSnapshot(token){
@@ -660,10 +790,10 @@ async function pollSnapshot(token){
     if (token !== state.pollToken) return;
     state.snapshotHash = data.hash || state.snapshotHash;
     if (data.changed) renderTerminal(data.text || '');
-    setStatus('Connected', 'ok');
+    setStatus(i18n.alreadyConnected, 'ok');
     state.pollTimer = setTimeout(() => pollSnapshot(token), 1000);
   } catch (err) {
-    setStatus('Snapshot failed: ' + err.message, 'err');
+    setStatus(i18n.snapshotFailed + ': ' + err.message, 'err');
     state.pollTimer = setTimeout(() => pollSnapshot(token), 3000);
   }
 }
@@ -675,30 +805,30 @@ function stopPolling(){
 async function sendCommand(enter){
   const input = $('commandInput');
   const text = input.value;
-  if (!state.paneId) { setStatus('Select a pane first', 'err'); return; }
+  if (!state.paneId) { setStatus(i18n.selectPaneFirst, 'err'); return; }
   if (!text && !enter) return;
   await sendRaw(text, enter);
   if (enter) input.value = '';
 }
 async function sendRaw(text, enter){
-  if (!state.paneId) { setStatus('Select a pane first', 'err'); return; }
-  setStatus('Sending', 'work');
+  if (!state.paneId) { setStatus(i18n.selectPaneFirst, 'err'); return; }
+  setStatus(i18n.sending, 'work');
   const body = {textBase64: utf8Base64(text || ''), noPaste: true, enter: !!enter};
   await api('/api/instances/' + encodeURIComponent(state.instanceId) + '/panes/' + encodeURIComponent(state.paneId) + '/send', {method:'POST', body}, true);
   state.snapshotHash = '';
   pollSnapshot(state.pollToken);
-  setStatus('Sent', 'ok');
+  setStatus(i18n.sent, 'ok');
 }
 async function spawnSession(cwd){
-  setStatus('Starting Codex', 'work');
+  setStatus(i18n.startingCodex, 'work');
   const body = {cwd: cwd || state.defaults.cwd, command: state.defaults.command || []};
   const data = await api('/api/instances/' + encodeURIComponent(state.instanceId) + '/spawn', {method:'POST', body}, true);
   await loadSessions();
   if (data.paneId) selectPane(data.paneId);
 }
 async function deletePane(pane){
-  if (!confirm('Delete pane ' + pane.paneId + '?')) return;
-  setStatus('Deleting pane ' + pane.paneId, 'work');
+  if (!confirm(format(i18n.deletePaneConfirm, {id: pane.paneId}))) return;
+  setStatus(format(i18n.deletingPane, {id: pane.paneId}), 'work');
   await api('/api/instances/' + encodeURIComponent(state.instanceId) + '/panes/' + encodeURIComponent(pane.paneId), {method:'DELETE'}, true);
   if (pane.paneId === state.paneId) {
     stopPolling();
@@ -709,15 +839,15 @@ async function deletePane(pane){
 }
 function showPaneDetails(pane){
   state.selectedPane = pane;
-  $('dialogTitle').textContent = 'Session ' + pane.paneId;
+  $('dialogTitle').textContent = i18n.sessionPrefix + pane.paneId;
   const details = $('dialogDetails');
   details.innerHTML = '';
-  addDetail(details, 'Title', safeTitle(pane));
-  addDetail(details, 'Pane', pane.paneId);
-  addDetail(details, 'Window / Tab', (pane.windowId || 0) + ' / ' + (pane.tabId || 0));
-  addDetail(details, 'Workspace', pane.workspace || '-');
-  addDetail(details, 'Working directory', displayCwd(pane.cwd));
-  addDetail(details, 'Active', pane.isActive ? 'Yes' : 'No');
+  addDetail(details, i18n.dialogTitle, safeTitle(pane));
+  addDetail(details, i18n.dialogPane, pane.paneId);
+  addDetail(details, i18n.dialogWindowTab, (pane.windowId || 0) + ' / ' + (pane.tabId || 0));
+  addDetail(details, i18n.dialogWorkspace, pane.workspace || '-');
+  addDetail(details, i18n.dialogWorkingDir, displayCwd(pane.cwd));
+  addDetail(details, i18n.dialogActive, pane.isActive ? i18n.yes : i18n.no);
   $('paneDialog').showModal();
 }
 function addDetail(box, name, value){
@@ -844,6 +974,7 @@ function channel(v){ return v === 0 ? 0 : 55 + v * 40; }
 function rgb(r,g,b){ return 'rgb(' + clamp(r) + ',' + clamp(g) + ',' + clamp(b) + ')'; }
 function clamp(v){ return Math.max(0, Math.min(255, v | 0)); }
 function escapeHtml(value){ return String(value).replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch])); }
+function format(text, values){ return String(text).replace(/\{(\w+)\}/g, (_, key)=>values[key] ?? ''); }
 
 initFromHash();
 $('baseUrl').value = state.baseUrl;
@@ -858,7 +989,7 @@ $('sendForm').addEventListener('submit', event => { event.preventDefault(); send
 $('toggleKeys').onclick = () => setKeyPanel($('keyPanel').hidden);
 function setKeyPanel(show){
   $('keyPanel').hidden = !show;
-  $('toggleKeys').textContent = show ? 'Hide' : 'Keys';
+  $('toggleKeys').textContent = show ? i18n.hide : i18n.keys;
 }
 document.querySelectorAll('[data-key]').forEach(button => button.onclick = () => {
   const key = button.dataset.key;
@@ -876,8 +1007,8 @@ if (state.token) connect().catch(err => { showConnect(true); setStatus(err.messa
 `
 }
 
-func settingsJS() string {
-	return `
+func settingsJS(lang uiLang) string {
+	return jsI18N(lang) + `
 let currentConfig = null;
 let currentVersion = 'dev';
 let updateInfo = null;
@@ -887,13 +1018,14 @@ function setState(text, kind='muted'){ const el=$('saveState'); el.className='st
 function setUpdateState(text, kind='muted'){ const el=$('updateState'); el.className='update-state '+kind; el.textContent=text; }
 function setUpdateProgress(percent, text){
   $('updateProgressBar').style.width=Math.max(0, Math.min(100, percent||0))+'%';
-  $('updateProgressText').textContent=text||'No update running.';
+  $('updateProgressText').textContent=text||i18n.updateNoRunning;
 }
 function lines(value){ return value.split(/\r?\n/).map(x=>x.trim()).filter(Boolean); }
 function fill(){
   const c=currentConfig;
   $('listen').value=c.listen||''; $('token').value=c.token||''; $('publicBaseUrl').value=c.publicBaseUrl||''; $('root').value=c.root||'';
   $('version').value=currentVersion||'dev';
+  $('uiLanguage').value=c.uiLanguage||currentUILanguage||'en';
   $('timeout').value=c.commandTimeoutSeconds||5; $('regenToken').checked=!!c.regenerateTokenOnStart; $('lanPromptShown').checked=!!c.lanListenPromptShown; $('closeGui').checked=!!c.closeLaunchedGuiOnExit;
   $('defaultCwd').value=(c.mobileDefaults&&c.mobileDefaults.cwd)||'';
   $('defaultCommand').value=((c.mobileDefaults&&c.mobileDefaults.command)||[]).join('\n');
@@ -903,10 +1035,10 @@ function renderInstances(items){
   const box=$('instances'); box.innerHTML='';
   items.forEach((it, index)=>{
     const row=document.createElement('div'); row.className='instance-row';
-    row.innerHTML=` + "`" + `<label><span>ID</span><input data-field="id" value="${escapeAttr(it.id||'')}"></label>
-      <label><span>Name</span><input data-field="name" value="${escapeAttr(it.name||'')}"></label>
-      <label><span>WezTerm class</span><input data-field="class" value="${escapeAttr(it.class||'')}"></label>
-      <button type="button" class="remove">Remove</button>` + "`" + `;
+    row.innerHTML=` + "`" + `<label><span>${escapeHtml(i18n.idLabel)}</span><input data-field="id" value="${escapeAttr(it.id||'')}"></label>
+      <label><span>${escapeHtml(i18n.nameLabel)}</span><input data-field="name" value="${escapeAttr(it.name||'')}"></label>
+      <label><span>${escapeHtml(i18n.weztermClass)}</span><input data-field="class" value="${escapeAttr(it.class||'')}"></label>
+      <button type="button" class="remove">${escapeHtml(i18n.remove)}</button>` + "`" + `;
     row.querySelector('.remove').onclick=()=>{ currentConfig.instances.splice(index,1); fill(); };
     row.querySelectorAll('input').forEach(input=>input.oninput=()=>{ currentConfig.instances[index][input.dataset.field]=input.value; renderDefaults(); renderAutoLaunch(); });
     box.appendChild(row);
@@ -916,7 +1048,7 @@ function renderDefaults(){
   const select=$('defaultInstance'); const selected=(currentConfig.mobileDefaults&&currentConfig.mobileDefaults.instanceId)||'';
   select.innerHTML='';
   (currentConfig.instances||[]).forEach(it=>{
-    const option=document.createElement('option'); option.value=it.id||''; option.textContent=(it.name||it.id||'instance')+' ('+(it.id||'')+')';
+    const option=document.createElement('option'); option.value=it.id||''; option.textContent=(it.name||it.id||i18n.instanceFallback)+' ('+(it.id||'')+')';
     option.selected=option.value===selected; select.appendChild(option);
   });
 }
@@ -924,7 +1056,7 @@ function renderAutoLaunch(){
   const box=$('autoLaunch'); const selected=new Set(currentConfig.autoLaunch||[]); box.innerHTML='';
   (currentConfig.instances||[]).forEach(it=>{
     const label=document.createElement('label'); label.className='choice';
-    label.innerHTML=` + "`" + `<input type="checkbox" value="${escapeAttr(it.id||'')}" ${selected.has(it.id)?'checked':''}><span>${escapeHtml(it.name||it.id||'instance')} <code>${escapeHtml(it.id||'')}</code></span>` + "`" + `;
+    label.innerHTML=` + "`" + `<input type="checkbox" value="${escapeAttr(it.id||'')}" ${selected.has(it.id)?'checked':''}><span>${escapeHtml(it.name||it.id||i18n.instanceFallback)} <code>${escapeHtml(it.id||'')}</code></span>` + "`" + `;
     box.appendChild(label);
   });
 }
@@ -935,7 +1067,7 @@ function collect(){
     class: row.querySelector('[data-field=class]').value.trim()
   }));
   return {
-    listen:$('listen').value.trim(), token:$('token').value.trim(), publicBaseUrl:$('publicBaseUrl').value.trim(), root:$('root').value.trim(),
+    listen:$('listen').value.trim(), token:$('token').value.trim(), publicBaseUrl:$('publicBaseUrl').value.trim(), uiLanguage:$('uiLanguage').value, root:$('root').value.trim(),
     commandTimeoutSeconds:parseInt($('timeout').value,10)||5,
     regenerateTokenOnStart:$('regenToken').checked,
     lanListenPromptShown:$('lanPromptShown').checked,
@@ -946,13 +1078,13 @@ function collect(){
   };
 }
 async function load(){
-  setState('Loading...');
+  setState(i18n.loading);
   const res=await fetch('/api/settings'); const payload=await res.json(); if(!payload.ok) throw new Error(payload.error);
-  currentConfig=payload.data.config; currentVersion=payload.data.version||'dev'; fill(); setState('Config: '+payload.data.configPath);
+  currentConfig=payload.data.config; currentVersion=payload.data.version||'dev'; fill(); setState(i18n.configPrefix+payload.data.configPath);
   maybePromptLANListen();
 }
 async function save(event){
-  event.preventDefault(); setState('Saving...');
+  event.preventDefault(); setState(i18n.saving);
   await saveSettingsPayload(collect());
 }
 async function saveSettingsPayload(payloadConfig, options){
@@ -960,8 +1092,8 @@ async function saveSettingsPayload(payloadConfig, options){
   const res=await fetch('/api/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payloadConfig)});
   const payload=await res.json(); if(!payload.ok){ setState(payload.error,'error'); return; }
   currentConfig=payload.data.config; currentVersion=payload.data.version||currentVersion; fill();
-  const restart=payload.data.restartRequired ? ' Restart Agent for: '+payload.data.restartFields.join(', ') : '';
-  setState('Saved to '+payload.data.configPath+'.'+restart);
+  const restart=payload.data.restartRequired ? i18n.restartFieldsPrefix+payload.data.restartFields.join(', ') : '';
+  setState(i18n.configSavedPrefix+payload.data.configPath+'.'+restart);
   if(options.restartIfNeeded && payload.data.restartRequired && (payload.data.restartFields||[]).includes('listen')){
     await restartAgentAfterListenChange();
   }
@@ -969,7 +1101,7 @@ async function saveSettingsPayload(payloadConfig, options){
 function maybePromptLANListen(){
   if(!currentConfig || currentConfig.lanListenPromptShown || isLANListen(currentConfig.listen)) return;
   const nextListen='0.0.0.0:'+listenPort(currentConfig.listen);
-  const ok=confirm('Allow phone/browser access from LAN?\n\nEasyCodex is currently listening on '+(currentConfig.listen||'127.0.0.1:8765')+'. Change it to '+nextListen+' so devices on the same Wi-Fi can connect?');
+  const ok=confirm(format(i18n.lanConfirm, {listen:(currentConfig.listen||'127.0.0.1:8765'), next:nextListen}));
   currentConfig.lanListenPromptShown=true;
   if(ok) currentConfig.listen=nextListen;
   fill();
@@ -984,10 +1116,10 @@ function listenPort(listen){
   return match ? match[1] : '8765';
 }
 async function restartAgentAfterListenChange(){
-  setState('Saved. Restarting Agent to apply LAN listen address...','muted');
+  setState(i18n.restartListenSaving,'muted');
   const res=await fetch('/api/restart',{method:'POST'});
   const payload=await res.json(); if(!payload.ok) throw new Error(payload.error);
-  setState('Agent is restarting. Reopen Settings after a few seconds.','muted');
+  setState(i18n.restartListenDone,'muted');
 }
 function renderUpdate(info){
   updateInfo=info;
@@ -997,14 +1129,14 @@ function renderUpdate(info){
   } else {
     $('releaseLink').hidden=true;
   }
-  const published=info.publishedAt ? '\nPublished: '+info.publishedAt : '';
-  const pkg=info.packageName ? '\nPackage: '+info.packageName+(info.packageKind==='patch'?' (small update)':'') : '';
-  const text='Current: '+(info.currentVersion||'dev')+'\nLatest: '+(info.latestVersion||'unknown')+'\n'+(info.message||'')+pkg+published;
+  const published=info.publishedAt ? '\n'+i18n.published+': '+info.publishedAt : '';
+  const pkg=info.packageName ? '\n'+i18n.packageLabel+': '+info.packageName+(info.packageKind==='patch'?' ('+i18n.smallUpdate+')':'') : '';
+  const text=i18n.current+': '+(info.currentVersion||'dev')+'\n'+i18n.latest+': '+(info.latestVersion||'unknown')+'\n'+(info.message||'')+pkg+published;
   setUpdateState(text, info.canUpdate?'ok':(info.upToDate?'work':'muted'));
-  setUpdateProgress(0, info.packageKind==='patch'?'Ready to download small update package.':'Ready to download update package.');
+  setUpdateProgress(0, info.packageKind==='patch'?i18n.readyPatch:i18n.readyUpdate);
 }
 async function checkUpdate(){
-  $('checkUpdate').disabled=true; $('applyUpdate').disabled=true; setUpdateState('Checking GitHub latest release...','work');
+  $('checkUpdate').disabled=true; $('applyUpdate').disabled=true; setUpdateState(i18n.checkingRelease,'work');
   try{
     const res=await fetch('/api/update/check'); const payload=await res.json(); if(!payload.ok) throw new Error(payload.error);
     renderUpdate(payload.data);
@@ -1016,7 +1148,7 @@ async function checkUpdate(){
 }
 async function applyUpdate(){
   if(!updateInfo||!updateInfo.canUpdate) return;
-  $('checkUpdate').disabled=true; $('applyUpdate').disabled=true; setUpdateState('Starting update...','work'); setUpdateProgress(0,'Starting update...');
+  $('checkUpdate').disabled=true; $('applyUpdate').disabled=true; setUpdateState(i18n.startingUpdate,'work'); setUpdateProgress(0,i18n.startingUpdate);
   try{
     const body={useGitHubProxy:$('useGitHubProxy').checked};
     const res=await fetch('/api/update/apply',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}); const payload=await res.json(); if(!payload.ok) throw new Error(payload.error);
@@ -1031,14 +1163,14 @@ async function pollUpdateStatus(){
     const res=await fetch('/api/update/status'); const payload=await res.json(); if(!payload.ok) throw new Error(payload.error);
     const job=payload.data||{};
     const detail=job.totalBytes>0 ? ' '+formatBytes(job.bytes)+' / '+formatBytes(job.totalBytes) : '';
-    setUpdateProgress(job.percent||0, (job.message||job.phase||'Updating...')+detail);
-    setUpdateState((job.message||'Updating...')+(job.error?'\n'+job.error:''), job.error?'err':(job.done&&job.ok?'ok':'work'));
+    setUpdateProgress(job.percent||0, (job.message||job.phase||i18n.updating)+detail);
+    setUpdateState((job.message||i18n.updating)+(job.error?'\n'+job.error:''), job.error?'err':(job.done&&job.ok?'ok':'work'));
     if(job.active){
       updatePollTimer=setTimeout(pollUpdateStatus, 350);
     }else{
       $('checkUpdate').disabled=false;
       $('applyUpdate').disabled=!(updateInfo&&updateInfo.canUpdate);
-      if(job.done&&job.ok) setUpdateState('Update prepared. The page will disconnect while Agent restarts.','ok');
+      if(job.done&&job.ok) setUpdateState(i18n.updatePrepared,'ok');
     }
   }catch(err){
     setUpdateState(err.message,'err');
@@ -1053,11 +1185,13 @@ function formatBytes(value){
 }
 function escapeHtml(v){ return String(v).replace(/[&<>"']/g, ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch])); }
 function escapeAttr(v){ return escapeHtml(v); }
+function format(text, values){ return String(text).replace(/\{(\w+)\}/g, (_, key)=>values[key] ?? ''); }
 $('settingsForm').addEventListener('submit', save);
 $('reload').onclick=()=>load().catch(err=>setState(err.message,'error'));
-$('addInstance').onclick=()=>{ currentConfig.instances.push({id:'work',name:'work',class:'easycodex'}); fill(); };
+$('addInstance').onclick=()=>{ currentConfig.instances.push({id:i18n.work,name:i18n.work,class:'easycodex'}); fill(); };
 $('checkUpdate').onclick=()=>checkUpdate();
 $('applyUpdate').onclick=()=>applyUpdate();
+$('uiLanguage').onchange=()=>{ location.href=location.pathname+'?lang='+encodeURIComponent($('uiLanguage').value); };
 load().catch(err=>setState(err.message,'error'));`
 }
 
@@ -1071,14 +1205,14 @@ func easycodexSVG() string {
 </svg>`
 }
 
-func networkBadge(baseURL string) string {
+func networkBadge(lang uiLang, baseURL string) string {
 	if strings.Contains(baseURL, "127.0.0.1") || strings.Contains(baseURL, "localhost") {
-		return "Local PC"
+		return html.EscapeString(lang.t("localPC"))
 	}
 	if strings.HasPrefix(baseURL, "https://") || strings.Contains(baseURL, ".ts.net") || strings.Contains(baseURL, "100.") {
-		return "Public"
+		return html.EscapeString(lang.t("public"))
 	}
-	return "Wi-Fi / LAN"
+	return html.EscapeString(lang.t("wifiLAN"))
 }
 
 func emptyDash(value string) string {

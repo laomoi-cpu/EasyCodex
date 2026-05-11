@@ -93,15 +93,15 @@ type networkTestTarget struct {
 }
 
 type networkTestResult struct {
-	Label       string `json:"label"`
-	URL         string `json:"url"`
-	OK          bool   `json:"ok"`
-	Status      int    `json:"status,omitempty"`
-	LatencyMS   int64  `json:"latencyMs"`
-	Service     string `json:"service,omitempty"`
-	LANEnabled  *bool  `json:"lanEnabled,omitempty"`
-	Error       string `json:"error,omitempty"`
-	TestedAt    string `json:"testedAt"`
+	Label      string `json:"label"`
+	URL        string `json:"url"`
+	OK         bool   `json:"ok"`
+	Status     int    `json:"status,omitempty"`
+	LatencyMS  int64  `json:"latencyMs"`
+	Service    string `json:"service,omitempty"`
+	LANEnabled *bool  `json:"lanEnabled,omitempty"`
+	Error      string `json:"error,omitempty"`
+	TestedAt   string `json:"testedAt"`
 }
 
 type clientConnection struct {
@@ -288,6 +288,7 @@ func (s *Server) pairingPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	cfg := s.configSnapshot()
+	lang := normalizeUILang(cfg.UILanguage)
 	network := netinfo.Inspect(cfg.Listen)
 	baseURLs := append([]string(nil), network.LANURLs...)
 	if cfg.PublicBaseURL != "" {
@@ -298,7 +299,7 @@ func (s *Server) pairingPage(w http.ResponseWriter, r *http.Request) {
 	} else {
 		baseURLs = append(baseURLs, network.LocalURL)
 	}
-	s.writePairingConsole(w, baseURLs)
+	s.writePairingConsole(w, lang, baseURLs)
 }
 
 func (s *Server) pairingQR(w http.ResponseWriter, r *http.Request) {
