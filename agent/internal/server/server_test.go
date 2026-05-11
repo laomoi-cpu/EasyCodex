@@ -284,6 +284,10 @@ func TestSettingsIncludesVersion(t *testing.T) {
 	if !strings.Contains(body, "Current version") || !strings.Contains(body, `id="version"`) {
 		t.Fatalf("expected version field in settings page: %s", body)
 	}
+	if !strings.Contains(body, `href="https://github.com/laomoi-cpu/EasyCodex"`) ||
+		!strings.Contains(body, `class="github-link"`) {
+		t.Fatalf("expected GitHub link in settings page: %s", body)
+	}
 	if !strings.Contains(body, "Check Update") ||
 		!strings.Contains(body, "/api/update/check") ||
 		!strings.Contains(body, "/api/update/apply") {

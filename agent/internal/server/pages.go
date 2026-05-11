@@ -172,7 +172,7 @@ func pageShell(title, active, body, script string) string {
 <body class="page-` + html.EscapeString(active) + `">
 <header class="topbar">
   <a class="brand" href="/pairing"><img src="/assets/easycodex.svg" alt=""><span>EasyCodex</span></a>
-  <nav>` + nav("pairing", "/pairing", "Pairing") + nav("connections", "/connections", "Connections") + nav("settings", "/settings", "Settings") + nav("status", "/status", "Status") + `</nav>
+  <nav>` + nav("pairing", "/pairing", "Pairing") + nav("connections", "/connections", "Connections") + nav("settings", "/settings", "Settings") + nav("status", "/status", "Status") + `<a class="github-link" href="https://github.com/laomoi-cpu/EasyCodex" target="_blank" rel="noreferrer">GitHub</a></nav>
 </header>
 <main>` + body + `</main>
 ` + script + `
@@ -350,7 +350,7 @@ func consoleCSS() string {
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:14px/1.5 "Segoe UI",Arial,sans-serif}code,input,textarea,select{font-family:Consolas,"Cascadia Mono",monospace}
 .topbar{height:64px;display:flex;align-items:center;justify-content:space-between;padding:0 28px;background:rgba(255,255,255,.9);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:2;backdrop-filter:blur(12px)}
 .brand{display:flex;align-items:center;gap:10px;color:var(--ink);text-decoration:none;font-weight:700;font-size:17px}.brand img{width:34px;height:34px}
-nav{display:flex;gap:6px}nav a{color:#475467;text-decoration:none;padding:8px 12px;border-radius:7px}nav a.active,nav a:hover{background:#e7f4f4;color:#075f63}
+nav{display:flex;gap:6px;align-items:center}nav a{color:#475467;text-decoration:none;padding:8px 12px;border-radius:7px}nav a.active,nav a:hover{background:#e7f4f4;color:#075f63}nav a.github-link{background:#2563eb;color:#fff;font-weight:700}nav a.github-link:hover{background:#1d4ed8;color:#fff}
 main{max-width:1180px;margin:0 auto;padding:28px}.hero{display:flex;justify-content:space-between;align-items:center;gap:28px;margin-bottom:22px}.hero.compact{align-items:flex-end}.eyebrow{text-transform:uppercase;letter-spacing:.08em;color:var(--accent);font-weight:700;font-size:12px;margin:0 0 6px}.hero h1{margin:0;max-width:780px;font-size:34px;line-height:1.12;letter-spacing:0}.lead{max-width:820px;color:var(--muted);font-size:16px;margin:10px 0 0}.hero-mark{width:126px;height:126px;flex:0 0 auto}
 .panel,.pair-card,.status-card{background:var(--panel);border:1px solid var(--line);border-radius:8px;box-shadow:var(--shadow)}.panel{padding:22px}.panel h2{margin:0 0 16px;font-size:17px}.panel-grid{display:grid;gap:16px}.panel-grid.two{grid-template-columns:repeat(2,minmax(0,1fr))}
 .pair-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:16px}.pair-card{display:grid;grid-template-columns:190px minmax(0,1fr);gap:18px;padding:18px}.qr-frame{display:grid;place-items:center;border:1px solid var(--line);background:#fafafa;border-radius:8px;aspect-ratio:1}.qr-frame img{width:166px;height:166px}.pair-meta{min-width:0}.pair-meta h3{margin:2px 0 6px;font-size:18px}.pair-hint{margin:0 0 10px;color:var(--muted);font-size:13px;line-height:1.5}.pair-meta label{display:block;color:var(--muted);font-size:12px;margin:12px 0 4px}.pair-meta code,.kv dd,.link-field{display:block;word-break:break-all;background:#f5f7fa;border:1px solid #e4e7ec;border-radius:6px;padding:9px;color:#253244}.link-field{color:#1d4ed8;text-decoration:none;font-weight:700}.link-field:hover{text-decoration:underline}

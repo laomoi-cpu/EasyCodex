@@ -1,6 +1,6 @@
 # EasyCodex
 
-最新版本下载：[EasyCodex 0.0.8](https://github.com/laomoi-cpu/EasyCodex/releases/download/v0.0.8/EasyCodex-0.0.8.zip)
+最新版本下载：[EasyCodex 0.0.9](https://github.com/laomoi-cpu/EasyCodex/releases/download/v0.0.9/EasyCodex-0.0.9.zip)
 
 EasyCodex 是一个面向 Codex 用户的 Windows 远程终端工作台。
 
