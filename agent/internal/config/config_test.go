@@ -105,6 +105,7 @@ func TestSaveWritesConfigFile(t *testing.T) {
 	cfg.Root = `D:\EasyCodex`
 	cfg.Token = "saved-token"
 	cfg.RegenerateTokenOnStart = true
+	cfg.LANListenPromptShown = true
 	cfg.PublicBaseURL = "http://100.64.1.2:8765/"
 	cfg.Listen = "0.0.0.0:8765"
 	cfg.MobileDefaults.CWD = `D:\mgame`
@@ -123,6 +124,9 @@ func TestSaveWritesConfigFile(t *testing.T) {
 	if !strings.Contains(string(data), `"regenerateTokenOnStart": true`) {
 		t.Fatalf("expected token startup option in saved config: %s", data)
 	}
+	if !strings.Contains(string(data), `"lanListenPromptShown": true`) {
+		t.Fatalf("expected lan listen prompt option in saved config: %s", data)
+	}
 	if !strings.Contains(string(data), `"publicBaseUrl": "http://100.64.1.2:8765"`) {
 		t.Fatalf("expected normalized public base url in saved config: %s", data)
 	}
@@ -130,7 +134,7 @@ func TestSaveWritesConfigFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load returned error: %v", err)
 	}
-	if !found || loaded.Token != "saved-token" || !loaded.RegenerateTokenOnStart || loaded.PublicBaseURL != "http://100.64.1.2:8765" || loaded.Listen != "0.0.0.0:8765" {
+	if !found || loaded.Token != "saved-token" || !loaded.RegenerateTokenOnStart || !loaded.LANListenPromptShown || loaded.PublicBaseURL != "http://100.64.1.2:8765" || loaded.Listen != "0.0.0.0:8765" {
 		t.Fatalf("unexpected loaded config: found=%v cfg=%#v", found, loaded)
 	}
 }

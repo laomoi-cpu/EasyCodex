@@ -311,6 +311,7 @@ func settingsPageHTML() string {
       <label><span>Current version</span><input id="version" readonly></label>
     </div>
     <label class="check-row"><input id="regenToken" type="checkbox"><span>Regenerate API token every Agent startup</span></label>
+    <label class="check-row"><input id="lanPromptShown" type="checkbox"><span>Do not show LAN listen setup prompt again</span></label>
     <label class="check-row"><input id="closeGui" type="checkbox"><span>Close GUI windows launched by Agent when Agent exits</span></label>
   </section>
 
@@ -804,7 +805,7 @@ function fill(){
   const c=currentConfig;
   $('listen').value=c.listen||''; $('token').value=c.token||''; $('publicBaseUrl').value=c.publicBaseUrl||''; $('root').value=c.root||'';
   $('version').value=currentVersion||'dev';
-  $('timeout').value=c.commandTimeoutSeconds||5; $('regenToken').checked=!!c.regenerateTokenOnStart; $('closeGui').checked=!!c.closeLaunchedGuiOnExit;
+  $('timeout').value=c.commandTimeoutSeconds||5; $('regenToken').checked=!!c.regenerateTokenOnStart; $('lanPromptShown').checked=!!c.lanListenPromptShown; $('closeGui').checked=!!c.closeLaunchedGuiOnExit;
   $('defaultCwd').value=(c.mobileDefaults&&c.mobileDefaults.cwd)||'';
   $('defaultCommand').value=((c.mobileDefaults&&c.mobileDefaults.command)||[]).join('\n');
   renderInstances(c.instances||[]); renderDefaults(); renderAutoLaunch();
@@ -848,6 +849,7 @@ function collect(){
     listen:$('listen').value.trim(), token:$('token').value.trim(), publicBaseUrl:$('publicBaseUrl').value.trim(), root:$('root').value.trim(),
     commandTimeoutSeconds:parseInt($('timeout').value,10)||5,
     regenerateTokenOnStart:$('regenToken').checked,
+    lanListenPromptShown:$('lanPromptShown').checked,
     closeLaunchedGuiOnExit:$('closeGui').checked,
     instances,
     autoLaunch:[...document.querySelectorAll('#autoLaunch input:checked')].map(x=>x.value),
@@ -858,14 +860,45 @@ async function load(){
   setState('Loading...');
   const res=await fetch('/api/settings'); const payload=await res.json(); if(!payload.ok) throw new Error(payload.error);
   currentConfig=payload.data.config; currentVersion=payload.data.version||'dev'; fill(); setState('Config: '+payload.data.configPath);
+  maybePromptLANListen();
 }
 async function save(event){
   event.preventDefault(); setState('Saving...');
-  const res=await fetch('/api/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(collect())});
+  await saveSettingsPayload(collect());
+}
+async function saveSettingsPayload(payloadConfig, options){
+  options=options||{};
+  const res=await fetch('/api/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payloadConfig)});
   const payload=await res.json(); if(!payload.ok){ setState(payload.error,'error'); return; }
   currentConfig=payload.data.config; currentVersion=payload.data.version||currentVersion; fill();
   const restart=payload.data.restartRequired ? ' Restart Agent for: '+payload.data.restartFields.join(', ') : '';
   setState('Saved to '+payload.data.configPath+'.'+restart);
+  if(options.restartIfNeeded && payload.data.restartRequired && (payload.data.restartFields||[]).includes('listen')){
+    await restartAgentAfterListenChange();
+  }
+}
+function maybePromptLANListen(){
+  if(!currentConfig || currentConfig.lanListenPromptShown || isLANListen(currentConfig.listen)) return;
+  const nextListen='0.0.0.0:'+listenPort(currentConfig.listen);
+  const ok=confirm('Allow phone/browser access from LAN?\n\nEasyCodex is currently listening on '+(currentConfig.listen||'127.0.0.1:8765')+'. Change it to '+nextListen+' so devices on the same Wi-Fi can connect?');
+  currentConfig.lanListenPromptShown=true;
+  if(ok) currentConfig.listen=nextListen;
+  fill();
+  saveSettingsPayload(collect(), {restartIfNeeded: ok}).catch(err=>setState(err.message,'error'));
+}
+function isLANListen(listen){
+  const value=String(listen||'').trim().toLowerCase();
+  return value.startsWith('0.0.0.0:') || value.startsWith(':') || value.startsWith('[::]:') || value === '0.0.0.0';
+}
+function listenPort(listen){
+  const match=String(listen||'').match(/:(\d+)$/);
+  return match ? match[1] : '8765';
+}
+async function restartAgentAfterListenChange(){
+  setState('Saved. Restarting Agent to apply LAN listen address...','muted');
+  const res=await fetch('/api/restart',{method:'POST'});
+  const payload=await res.json(); if(!payload.ok) throw new Error(payload.error);
+  setState('Agent is restarting. Reopen Settings after a few seconds.','muted');
 }
 function renderUpdate(info){
   updateInfo=info;

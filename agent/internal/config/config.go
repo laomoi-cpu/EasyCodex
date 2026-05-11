@@ -23,6 +23,7 @@ type Config struct {
 	Root                   string         `json:"root"`
 	Token                  string         `json:"token"`
 	RegenerateTokenOnStart bool           `json:"regenerateTokenOnStart"`
+	LANListenPromptShown   bool           `json:"lanListenPromptShown"`
 	PublicBaseURL          string         `json:"publicBaseUrl"`
 	CommandTimeoutSeconds  int            `json:"commandTimeoutSeconds"`
 	AutoLaunch             []string       `json:"autoLaunch"`

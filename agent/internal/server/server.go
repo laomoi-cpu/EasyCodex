@@ -41,6 +41,7 @@ type Server struct {
 	wezterm    WezTerm
 	instances  map[string]config.Instance
 	clients    map[string]clientConnection
+	restart    func()
 	logger     *slog.Logger
 }
 
@@ -218,6 +219,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/connections", s.localOnly(s.connections))
 	mux.HandleFunc("GET /api/update/check", s.localOnly(s.checkUpdate))
 	mux.HandleFunc("POST /api/update/apply", s.localOnly(s.applyUpdate))
+	mux.HandleFunc("POST /api/restart", s.localOnly(s.restartAgent))
 	mux.HandleFunc("POST /api/settings", s.localOnly(s.saveSettings))
 	mux.HandleFunc("GET /api/instances", s.auth(s.instancesList))
 	mux.HandleFunc("POST /api/instances/{instanceID}/launch", s.auth(s.launch))
@@ -634,6 +636,24 @@ func (s *Server) settings(w http.ResponseWriter, r *http.Request) {
 		Network:    netinfo.Inspect(cfg.Listen),
 		Version:    AppVersion,
 	})
+}
+
+func (s *Server) SetRestartFunc(restart func()) {
+	s.mu.Lock()
+	s.restart = restart
+	s.mu.Unlock()
+}
+
+func (s *Server) restartAgent(w http.ResponseWriter, r *http.Request) {
+	s.mu.RLock()
+	restart := s.restart
+	s.mu.RUnlock()
+	if restart == nil {
+		writeError(w, http.StatusNotImplemented, errors.New("restart is not available"))
+		return
+	}
+	writeOK(w, http.StatusAccepted, map[string]bool{"restarting": true})
+	go restart()
 }
 
 func (s *Server) connections(w http.ResponseWriter, r *http.Request) {

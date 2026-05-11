@@ -87,6 +87,10 @@ func main() {
 	if err != nil {
 		fatalStartup(logger, "Failed to create server", err)
 	}
+	app.SetRestartFunc(func() {
+		time.Sleep(700 * time.Millisecond)
+		restartSelf(logger)
+	})
 
 	httpServer := &http.Server{
 		Addr:              cfg.Listen,
@@ -224,6 +228,38 @@ func openURL(url string, logger *slog.Logger) {
 		return
 	}
 	logger.Info("open this URL", "url", url)
+}
+
+func restartSelf(logger *slog.Logger) {
+	exe, err := os.Executable()
+	if err != nil {
+		fatalStartup(logger, "Failed to restart EasyCodex Agent", err)
+	}
+	cwd, err := os.Getwd()
+	if err != nil {
+		cwd = filepath.Dir(exe)
+	}
+	if runtime.GOOS == "windows" {
+		script := fmt.Sprintf("Start-Sleep -Milliseconds 900; Start-Process -FilePath %s -WorkingDirectory %s", psString(exe), psString(cwd))
+		cmd := exec.Command("powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-WindowStyle", "Hidden", "-Command", script)
+		winproc.HideWindow(cmd)
+		if err := cmd.Start(); err != nil {
+			fatalStartup(logger, "Failed to restart EasyCodex Agent", err)
+		}
+		_ = cmd.Process.Release()
+		os.Exit(0)
+	}
+	cmd := exec.Command(exe)
+	cmd.Dir = cwd
+	if err := cmd.Start(); err != nil {
+		fatalStartup(logger, "Failed to restart EasyCodex Agent", err)
+	}
+	_ = cmd.Process.Release()
+	os.Exit(0)
+}
+
+func psString(value string) string {
+	return "'" + strings.ReplaceAll(value, "'", "''") + "'"
 }
 
 func initializeMissingConfig(configPath string, cfg config.Config, found bool) (bool, error) {

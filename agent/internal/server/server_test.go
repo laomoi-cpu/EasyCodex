@@ -293,6 +293,11 @@ func TestSettingsIncludesVersion(t *testing.T) {
 		!strings.Contains(body, "/api/update/apply") {
 		t.Fatalf("expected update controls in settings page: %s", body)
 	}
+	if !strings.Contains(body, `id="lanPromptShown"`) ||
+		!strings.Contains(body, "maybePromptLANListen") ||
+		!strings.Contains(body, "/api/restart") {
+		t.Fatalf("expected LAN listen prompt in settings page: %s", body)
+	}
 }
 
 func TestUpdateCheckReportsNewRelease(t *testing.T) {
