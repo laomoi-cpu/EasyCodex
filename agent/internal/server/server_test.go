@@ -577,7 +577,9 @@ func TestTerminalPageIsAvailableRemotely(t *testing.T) {
 		!strings.Contains(body, ".key-panel[hidden]{display:none!important}") ||
 		!strings.Contains(body, ".page-terminal .terminal-app[hidden],.page-terminal .terminal-connect[hidden]{display:none!important}") ||
 		!strings.Contains(body, "font-size:var(--terminal-font-size,14px)") ||
-		!strings.Contains(body, ".page-terminal .terminal-sidebar{border:0;border-radius:0;box-shadow:none;max-height:none;min-height:0;padding:6px;background:#f8fafc;display:grid;grid-template-columns:auto minmax(0,1fr)") ||
+		!strings.Contains(body, `"JetBrains Mono","Cascadia Mono",Consolas`) ||
+		!strings.Contains(body, "const ansiColors = [0x000000,0xcc5555") ||
+		!strings.Contains(body, ".page-terminal .terminal-sidebar{border:0;border-radius:0;box-shadow:none;max-height:none;min-height:0;padding:6px;background:#1f1f1f;display:grid;grid-template-columns:auto minmax(0,1fr)") ||
 		!strings.Contains(body, ".page-terminal .pane-list{display:flex;gap:5px;min-width:0;overflow-x:auto;overflow-y:hidden") ||
 		!strings.Contains(body, ".page-terminal #newSession{width:32px") ||
 		!strings.Contains(body, ".page-terminal #refreshSessions{width:58px") ||
@@ -586,8 +588,13 @@ func TestTerminalPageIsAvailableRemotely(t *testing.T) {
 		!strings.Contains(body, "$('editConnection').onclick = () => openConnectionDialog()") ||
 		!strings.Contains(body, "function fitTerminalFont()") ||
 		!strings.Contains(body, "function markPaneInput(text)") ||
+		!strings.Contains(body, "await sendRaw(text, enter, true)") ||
+		!strings.Contains(body, "sendRaw(value[0], value[1], false)") ||
 		!strings.Contains(body, "refreshPaneList().catch(() => {})") ||
 		!strings.Contains(body, "function terminalShortcutFromEvent(event)") ||
+		!strings.Contains(body, "function terminalKeyboardReady()") ||
+		!strings.Contains(body, "document.body.classList.contains('page-terminal')") ||
+		!strings.Contains(body, "event.key === 'Tab' && event.shiftKey") ||
 		!strings.Contains(body, "document.addEventListener('keydown'") ||
 		!strings.Contains(body, "function setKeyPanel(show)") ||
 		!strings.Contains(body, "$('toggleKeys').onclick = () => setKeyPanel($('keyPanel').hidden)") ||
