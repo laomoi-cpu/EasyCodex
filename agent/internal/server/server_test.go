@@ -293,7 +293,8 @@ func TestTerminalPageIsAvailableRemotely(t *testing.T) {
 	if !strings.Contains(body, "Browser Terminal") ||
 		!strings.Contains(body, "terminalApp") ||
 		!strings.Contains(body, `class="page-terminal"`) ||
-		!strings.Contains(body, ".page-terminal .terminal-output{min-height:60dvh") ||
+		!strings.Contains(body, ".page-terminal .terminal-output{min-height:62dvh") ||
+		!strings.Contains(body, ".page-terminal .send-row{position:sticky") ||
 		!strings.Contains(body, "snapshot?lines=180&escapes=1") {
 		t.Fatalf("unexpected terminal page: %s", body)
 	}
