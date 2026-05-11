@@ -38,6 +38,7 @@ type Server struct {
 	configPath string
 	wezterm    WezTerm
 	instances  map[string]config.Instance
+	clients    map[string]clientConnection
 	logger     *slog.Logger
 }
 
@@ -79,6 +80,22 @@ type settingsResponse struct {
 	Network         netinfo.Info  `json:"network"`
 	RestartRequired bool          `json:"restartRequired"`
 	RestartFields   []string      `json:"restartFields,omitempty"`
+}
+
+type clientConnection struct {
+	ID         string `json:"id"`
+	Kind       string `json:"kind"`
+	Name       string `json:"name"`
+	RemoteAddr string `json:"remoteAddr"`
+	UserAgent  string `json:"userAgent"`
+	LastMethod string `json:"lastMethod"`
+	LastPath   string `json:"lastPath"`
+	FirstSeen  string `json:"firstSeen"`
+	LastSeen   string `json:"lastSeen"`
+	Requests   int    `json:"requests"`
+
+	firstSeenTime time.Time
+	lastSeenTime  time.Time
 }
 
 type sendTextRequest struct {
@@ -177,7 +194,7 @@ func NewWithConfigPath(cfg config.Config, configPath string, wezterm WezTerm, lo
 	for _, instance := range cfg.Instances {
 		instances[instance.ID] = instance
 	}
-	return &Server{cfg: cfg, configPath: configPath, wezterm: wezterm, instances: instances, logger: logger}, nil
+	return &Server{cfg: cfg, configPath: configPath, wezterm: wezterm, instances: instances, clients: map[string]clientConnection{}, logger: logger}, nil
 }
 
 func (s *Server) Handler() http.Handler {
@@ -185,6 +202,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /", s.homePage)
 	mux.HandleFunc("GET /status", s.statusPage)
 	mux.HandleFunc("GET /settings", s.settingsPage)
+	mux.HandleFunc("GET /connections", s.connectionsPage)
 	mux.HandleFunc("GET /terminal", s.terminalPage)
 	mux.HandleFunc("GET /assets/easycodex.svg", s.easycodexIcon)
 	mux.HandleFunc("GET /api/health", s.health)
@@ -194,6 +212,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/mobile-pair", s.mobilePair)
 	mux.HandleFunc("GET /api/config", s.auth(s.appConfig))
 	mux.HandleFunc("GET /api/settings", s.localOnly(s.settings))
+	mux.HandleFunc("GET /api/connections", s.localOnly(s.connections))
 	mux.HandleFunc("POST /api/settings", s.localOnly(s.saveSettings))
 	mux.HandleFunc("GET /api/instances", s.auth(s.instancesList))
 	mux.HandleFunc("POST /api/instances/{instanceID}/launch", s.auth(s.launch))
@@ -580,6 +599,7 @@ func (s *Server) auth(next http.HandlerFunc) http.HandlerFunc {
 			writeError(w, http.StatusUnauthorized, errors.New("unauthorized"))
 			return
 		}
+		s.recordClient(r)
 		next(w, r)
 	}
 }
@@ -608,6 +628,10 @@ func (s *Server) settings(w http.ResponseWriter, r *http.Request) {
 		ConfigPath: s.configPath,
 		Network:    netinfo.Inspect(cfg.Listen),
 	})
+}
+
+func (s *Server) connections(w http.ResponseWriter, r *http.Request) {
+	writeOK(w, http.StatusOK, map[string]any{"connections": s.connectionSnapshot()})
 }
 
 func (s *Server) saveSettings(w http.ResponseWriter, r *http.Request) {
@@ -661,6 +685,80 @@ func (s *Server) setConfig(cfg config.Config) {
 	s.cfg = cloneConfig(cfg)
 	s.instances = instances
 	s.mu.Unlock()
+}
+
+func (s *Server) recordClient(r *http.Request) {
+	now := time.Now()
+	remote := remoteHost(r.RemoteAddr)
+	kind := clientKind(r)
+	name := strings.TrimSpace(r.Header.Get("X-EasyCodex-Client-Name"))
+	if name == "" {
+		name = kind
+	}
+	id := strings.TrimSpace(r.Header.Get("X-EasyCodex-Client-ID"))
+	if id == "" {
+		sum := sha256.Sum256([]byte(remote + "|" + r.UserAgent() + "|" + kind))
+		id = "auto:" + hex.EncodeToString(sum[:])[:16]
+	}
+	if len(id) > 96 {
+		id = id[:96]
+	}
+
+	s.mu.Lock()
+	item := s.clients[id]
+	if item.Requests == 0 {
+		item.ID = id
+		item.FirstSeen = formatConnectionTime(now)
+		item.firstSeenTime = now
+	}
+	item.Kind = kind
+	item.Name = name
+	item.RemoteAddr = remote
+	item.UserAgent = r.UserAgent()
+	item.LastMethod = r.Method
+	item.LastPath = r.URL.Path
+	item.LastSeen = formatConnectionTime(now)
+	item.lastSeenTime = now
+	item.Requests++
+	s.clients[id] = item
+	s.pruneClientsLocked(now)
+	s.mu.Unlock()
+}
+
+func (s *Server) connectionSnapshot() []clientConnection {
+	s.mu.RLock()
+	items := make([]clientConnection, 0, len(s.clients))
+	for _, item := range s.clients {
+		items = append(items, item)
+	}
+	s.mu.RUnlock()
+	sort.Slice(items, func(i, j int) bool {
+		return items[i].lastSeenTime.After(items[j].lastSeenTime)
+	})
+	return items
+}
+
+func (s *Server) pruneClientsLocked(now time.Time) {
+	const maxClients = 200
+	const maxAge = 72 * time.Hour
+	for id, item := range s.clients {
+		if now.Sub(item.lastSeenTime) > maxAge {
+			delete(s.clients, id)
+		}
+	}
+	if len(s.clients) <= maxClients {
+		return
+	}
+	items := make([]clientConnection, 0, len(s.clients))
+	for _, item := range s.clients {
+		items = append(items, item)
+	}
+	sort.Slice(items, func(i, j int) bool {
+		return items[i].lastSeenTime.Before(items[j].lastSeenTime)
+	})
+	for _, item := range items[:len(s.clients)-maxClients] {
+		delete(s.clients, item.ID)
+	}
 }
 
 func cloneConfig(cfg config.Config) config.Config {
@@ -751,6 +849,37 @@ func isLocalRequest(r *http.Request) bool {
 	}
 	ip := net.ParseIP(host)
 	return ip != nil && ip.IsLoopback()
+}
+
+func remoteHost(remoteAddr string) string {
+	host, _, err := net.SplitHostPort(remoteAddr)
+	if err != nil {
+		return remoteAddr
+	}
+	return host
+}
+
+func clientKind(r *http.Request) string {
+	raw := strings.ToLower(strings.TrimSpace(r.Header.Get("X-EasyCodex-Client-Kind")))
+	switch raw {
+	case "android", "android app", "apk":
+		return "Android App"
+	case "browser", "web", "browser terminal":
+		return "Browser"
+	}
+	ua := strings.ToLower(r.UserAgent())
+	switch {
+	case strings.Contains(ua, "easycodex-android"):
+		return "Android App"
+	case strings.Contains(ua, "mozilla"):
+		return "Browser"
+	default:
+		return "API Client"
+	}
+}
+
+func formatConnectionTime(t time.Time) string {
+	return t.Format("2006-01-02 15:04:05")
 }
 
 func decodeSendText(body sendTextRequest) (string, error) {

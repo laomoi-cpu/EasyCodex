@@ -27,6 +27,14 @@ func (s *Server) settingsPage(w http.ResponseWriter, r *http.Request) {
 	writeHTML(w, settingsPageHTML())
 }
 
+func (s *Server) connectionsPage(w http.ResponseWriter, r *http.Request) {
+	if !isLocalRequest(r) {
+		writeError(w, http.StatusForbidden, fmt.Errorf("connections page is only available from localhost"))
+		return
+	}
+	writeHTML(w, connectionsPageHTML())
+}
+
 func (s *Server) terminalPage(w http.ResponseWriter, r *http.Request) {
 	writeHTML(w, terminalPageHTML())
 }
@@ -161,15 +169,50 @@ func pageShell(title, active, body, script string) string {
 <link rel="icon" href="/assets/easycodex.svg">
 <style>` + consoleCSS() + `</style>
 </head>
-<body>
+<body class="page-` + html.EscapeString(active) + `">
 <header class="topbar">
   <a class="brand" href="/pairing"><img src="/assets/easycodex.svg" alt=""><span>EasyCodex</span></a>
-  <nav>` + nav("terminal", "/terminal", "Terminal") + nav("pairing", "/pairing", "Pairing") + nav("settings", "/settings", "Settings") + nav("status", "/status", "Status") + `</nav>
+  <nav>` + nav("pairing", "/pairing", "Pairing") + nav("connections", "/connections", "Connections") + nav("settings", "/settings", "Settings") + nav("status", "/status", "Status") + `</nav>
 </header>
 <main>` + body + `</main>
 ` + script + `
 </body>
 </html>`
+}
+
+func connectionsPageHTML() string {
+	body := `
+<section class="hero compact">
+  <div>
+    <p class="eyebrow">Connected Terminals</p>
+    <h1>查看当前接入 EasyCodex 的终端。</h1>
+    <p class="lead">这里会记录已经通过 Token 访问过 Agent API 的浏览器终端、Android App 和其它 API 客户端。</p>
+  </div>
+  <div id="connectionsState" class="status-card muted">Loading...</div>
+</section>
+<section class="panel">
+  <div class="panel-title-row">
+    <h2>连接列表</h2>
+    <button type="button" class="secondary" id="refreshConnections">Refresh</button>
+  </div>
+  <div class="table-wrap">
+    <table class="connection-table">
+      <thead>
+        <tr>
+          <th>终端</th>
+          <th>类型</th>
+          <th>地址</th>
+          <th>最后访问</th>
+          <th>最后请求</th>
+          <th>次数</th>
+        </tr>
+      </thead>
+      <tbody id="connectionsBody"></tbody>
+    </table>
+  </div>
+</section>`
+	script := `<script>` + connectionsJS() + `</script>`
+	return pageShell("Connections", "connections", body, script)
 }
 
 func terminalPageHTML() string {
@@ -300,11 +343,54 @@ nav{display:flex;gap:6px}nav a{color:#475467;text-decoration:none;padding:8px 12
 main{max-width:1180px;margin:0 auto;padding:28px}.hero{display:flex;justify-content:space-between;align-items:center;gap:28px;margin-bottom:22px}.hero.compact{align-items:flex-end}.eyebrow{text-transform:uppercase;letter-spacing:.08em;color:var(--accent);font-weight:700;font-size:12px;margin:0 0 6px}.hero h1{margin:0;max-width:780px;font-size:34px;line-height:1.12;letter-spacing:0}.lead{max-width:820px;color:var(--muted);font-size:16px;margin:10px 0 0}.hero-mark{width:126px;height:126px;flex:0 0 auto}
 .panel,.pair-card,.status-card{background:var(--panel);border:1px solid var(--line);border-radius:8px;box-shadow:var(--shadow)}.panel{padding:22px}.panel h2{margin:0 0 16px;font-size:17px}.panel-grid{display:grid;gap:16px}.panel-grid.two{grid-template-columns:repeat(2,minmax(0,1fr))}
 .pair-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:16px}.pair-card{display:grid;grid-template-columns:190px minmax(0,1fr);gap:18px;padding:18px}.qr-frame{display:grid;place-items:center;border:1px solid var(--line);background:#fafafa;border-radius:8px;aspect-ratio:1}.qr-frame img{width:166px;height:166px}.pair-meta{min-width:0}.pair-meta h3{margin:2px 0 6px;font-size:18px}.pair-hint{margin:0 0 10px;color:var(--muted);font-size:13px;line-height:1.5}.pair-meta label{display:block;color:var(--muted);font-size:12px;margin:12px 0 4px}.pair-meta code,.kv dd,.link-field{display:block;word-break:break-all;background:#f5f7fa;border:1px solid #e4e7ec;border-radius:6px;padding:9px;color:#253244}.link-field{color:#1d4ed8;text-decoration:none;font-weight:700}.link-field:hover{text-decoration:underline}
-.badge{display:inline-flex;align-items:center;height:24px;padding:0 9px;border-radius:999px;background:#e7f4f4;color:#075f63;font-weight:700;font-size:12px}.settings-layout{display:grid;grid-template-columns:1fr 1fr;gap:16px}.settings-layout .panel:nth-child(2),.settings-layout .panel:nth-child(3){grid-column:span 1}.field-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}label span{display:block;color:#344054;font-weight:600;margin-bottom:6px}input,textarea,select{width:100%;border:1px solid #cfd6df;border-radius:7px;padding:10px 11px;background:#fff;color:var(--text);font-size:14px}textarea{resize:vertical}.check-row{display:flex;gap:10px;align-items:center;margin-top:16px}.check-row input{width:auto}.check-row span{margin:0;font-weight:500}
+.badge{display:inline-flex;align-items:center;height:24px;padding:0 9px;border-radius:999px;background:#e7f4f4;color:#075f63;font-weight:700;font-size:12px}.table-wrap{overflow:auto;border:1px solid var(--line);border-radius:8px}.connection-table{width:100%;border-collapse:collapse;min-width:860px;background:#fff}.connection-table th,.connection-table td{padding:11px 12px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}.connection-table th{background:#f8fafc;color:#475467;font-size:12px;text-transform:uppercase;letter-spacing:.04em}.connection-table tr:last-child td{border-bottom:0}.connection-table code{display:block;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.muted-text{color:var(--muted);font-size:12px}.settings-layout{display:grid;grid-template-columns:1fr 1fr;gap:16px}.settings-layout .panel:nth-child(2),.settings-layout .panel:nth-child(3){grid-column:span 1}.field-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}label span{display:block;color:#344054;font-weight:600;margin-bottom:6px}input,textarea,select{width:100%;border:1px solid #cfd6df;border-radius:7px;padding:10px 11px;background:#fff;color:var(--text);font-size:14px}textarea{resize:vertical}.check-row{display:flex;gap:10px;align-items:center;margin-top:16px}.check-row input{width:auto}.check-row span{margin:0;font-weight:500}
 .panel-title-row{display:flex;align-items:center;justify-content:space-between;gap:12px}.instance-row{display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:10px;align-items:end;margin-top:10px}.choice-list{display:grid;gap:10px}.choice{display:flex;align-items:center;gap:10px;padding:10px;border:1px solid var(--line);border-radius:7px}.choice input{width:auto}.actionbar{grid-column:1/-1;display:flex;justify-content:flex-end;gap:10px;padding:14px 0 4px}
 button{border:0;border-radius:7px;background:var(--accent);color:#fff;font-weight:700;padding:10px 16px;cursor:pointer}button:hover{filter:brightness(.96)}button.secondary{background:#fff;color:#344054;border:1px solid #cfd6df}.remove{background:#fff4ed;color:#b54708;border:1px solid #fed7aa}.status-card{padding:16px;min-width:220px}.status-card.muted{color:var(--muted)}.status-dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:#12b76a;margin-right:8px}.status-card small{display:block;color:var(--muted);margin-top:4px}.kv{display:grid;grid-template-columns:145px minmax(0,1fr);gap:10px;margin:0}.kv dt{color:var(--muted)}.kv dd{margin:0}
 .pair-section{margin-top:16px}.pair-section h2{margin-bottom:16px}.terminal-page{display:grid;gap:16px}.terminal-connect{display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:22px;align-items:end}.connect-form{display:grid;gap:12px}.terminal-app{display:grid;grid-template-columns:280px minmax(0,1fr);gap:14px;height:calc(100vh - 122px);min-height:620px}.terminal-sidebar,.terminal-workbench{background:#fff;border:1px solid var(--line);border-radius:8px;box-shadow:var(--shadow);min-height:0}.terminal-sidebar{display:flex;flex-direction:column;padding:12px}.terminal-toolbar{display:grid;grid-template-columns:48px 1fr;gap:8px;margin-bottom:10px}.pane-list{display:grid;gap:8px;overflow:auto}.pane-item{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center;padding:9px;border:1px solid var(--line);border-radius:7px;background:#f8fafc;text-align:left;color:#18212f}.pane-item.active{background:#dbeafe;border-color:#93c5fd}.pane-item.selected{outline:2px solid #2563eb}.pane-main{display:block;min-width:0}.pane-title{display:block;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.pane-meta{display:block;color:var(--muted);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.pane-menu{padding:7px 9px}.terminal-workbench{display:grid;grid-template-rows:auto minmax(0,1fr) auto auto;padding:12px;gap:10px}.terminal-statusbar{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px}.status-pill{background:#e5e7eb;color:#374151;border:1px solid #d1d5db}.status-pill.ok{background:#d1fae5;color:#065f46;border-color:#86efac}.status-pill.work{background:#dbeafe;color:#1d4ed8;border-color:#93c5fd}.status-pill.err{background:#fee2e2;color:#991b1b;border-color:#fca5a5}.terminal-output{margin:0;overflow:auto;background:#0b1220;color:#e6edf3;border-radius:8px;padding:14px;font:13px/1.45 Consolas,"Cascadia Mono",monospace;white-space:pre-wrap;word-break:break-word}.send-row{display:grid;grid-template-columns:minmax(0,1fr) 54px 92px;gap:8px}.send-row input{height:44px}.key-panel{display:grid;grid-template-columns:repeat(9,minmax(0,1fr));gap:6px}.key-panel button{padding:7px 6px;font-size:12px}.pane-dialog{border:1px solid var(--line);border-radius:8px;box-shadow:var(--shadow);max-width:560px;width:calc(100% - 28px);padding:18px}.pane-dialog h2{margin:0 0 14px}.dialog-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:16px}.danger{background:#fee2e2!important;color:#991b1b!important;border:1px solid #fca5a5!important}
-@media(max-width:760px){.topbar{padding:0 14px}.brand span{display:none}nav{gap:2px}nav a{padding:7px 8px;font-size:12px}main{padding:12px}.hero{display:block}.hero-mark{display:none}.settings-layout,.panel-grid.two{grid-template-columns:1fr}.field-grid{grid-template-columns:1fr}.pair-card{grid-template-columns:1fr}.instance-row{grid-template-columns:1fr}.actionbar{position:sticky;bottom:0;background:var(--bg);padding:12px 0}.terminal-connect{grid-template-columns:1fr}.terminal-app{grid-template-columns:1fr;height:calc(100vh - 88px);min-height:0}.terminal-sidebar{max-height:128px;padding:8px}.pane-list{display:flex;overflow:auto}.pane-item{min-width:180px}.terminal-workbench{min-height:0}.terminal-output{font-size:12px;padding:10px}.send-row{grid-template-columns:minmax(0,1fr) 48px 74px}.key-panel{grid-template-columns:repeat(3,minmax(0,1fr))}}`
+@media(max-width:760px){.topbar{padding:0 14px}.brand span{display:none}nav{gap:2px}nav a{padding:7px 8px;font-size:12px}main{padding:12px}.hero{display:block}.hero-mark{display:none}.settings-layout,.panel-grid.two{grid-template-columns:1fr}.field-grid{grid-template-columns:1fr}.pair-card{grid-template-columns:1fr}.instance-row{grid-template-columns:1fr}.actionbar{position:sticky;bottom:0;background:var(--bg);padding:12px 0}.terminal-connect{grid-template-columns:1fr}.terminal-app{grid-template-columns:1fr;height:calc(100vh - 88px);min-height:0}.terminal-sidebar{max-height:128px;padding:8px}.pane-list{display:flex;overflow:auto}.pane-item{min-width:180px}.terminal-workbench{min-height:0}.terminal-output{font-size:12px;padding:10px}.send-row{grid-template-columns:minmax(0,1fr) 48px 74px}.key-panel{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:760px){.page-terminal{background:#0b1220;overflow:hidden}.page-terminal .topbar{display:none}.page-terminal main{max-width:none;height:100dvh;padding:0;background:#0b1220}.page-terminal .terminal-page{height:100dvh;display:block}.page-terminal .terminal-connect{min-height:100dvh;display:grid;grid-template-columns:1fr;align-content:center;border:0;border-radius:0;box-shadow:none;padding:18px;background:#f8fafc}.page-terminal .terminal-connect h1{font-size:24px}.page-terminal .terminal-connect .lead{font-size:13px}.page-terminal .terminal-app{height:100dvh;min-height:0;display:grid;grid-template-columns:1fr;grid-template-rows:auto minmax(0,1fr);gap:0;background:#0b1220}.page-terminal .terminal-sidebar{border:0;border-radius:0;box-shadow:none;max-height:116px;min-height:0;padding:8px;background:#f8fafc}.page-terminal .terminal-toolbar{grid-template-columns:38px 82px;gap:6px;margin-bottom:7px}.page-terminal .terminal-toolbar button{height:34px;padding:0 8px;font-size:12px}.page-terminal .pane-list{display:flex;gap:6px;overflow-x:auto;overflow-y:hidden;padding-bottom:2px}.page-terminal .pane-item{min-width:150px;max-width:210px;padding:7px 8px;border-radius:7px}.page-terminal .pane-title{font-size:12px}.page-terminal .pane-meta{font-size:11px}.page-terminal .pane-menu{padding:4px 6px}.page-terminal .terminal-workbench{height:100%;min-height:0;border:0;border-radius:0;box-shadow:none;display:grid;grid-template-rows:38px minmax(60dvh,1fr) auto 50px;gap:7px;padding:8px;background:#0b1220}.page-terminal .terminal-statusbar{grid-template-columns:minmax(0,1fr) 42px;gap:6px}.page-terminal .terminal-statusbar button{height:34px;padding:0 9px;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.page-terminal #editConnection{font-size:0}.page-terminal #editConnection::before{content:"Set";font-size:12px}.page-terminal .terminal-output{min-height:60dvh;border-radius:0;padding:10px;font-size:12px;line-height:1.42;background:#0b1220}.page-terminal .send-row{grid-template-columns:minmax(0,1fr) 42px 58px;gap:6px}.page-terminal .send-row input{height:42px;border-radius:7px;font-size:14px}.page-terminal .send-row button{height:42px;padding:0 8px;font-size:12px}.page-terminal .key-panel{grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;background:#111827;padding:7px;border-radius:7px}.page-terminal .key-panel button{height:30px;padding:0 4px;font-size:11px}.page-terminal .pane-dialog{width:calc(100% - 18px);padding:14px}}`
+}
+
+func connectionsJS() string {
+	return `
+const $ = id => document.getElementById(id);
+function setState(text, kind='muted'){ const el=$('connectionsState'); el.className='status-card '+kind; el.textContent=text; }
+async function loadConnections(){
+  setState('Loading...');
+  const res = await fetch('/api/connections');
+  const payload = await res.json();
+  if (!payload.ok) throw new Error(payload.error || 'Load failed');
+  const items = (payload.data && payload.data.connections) || [];
+  renderConnections(items);
+  setState(items.length + ' terminal(s)');
+}
+function renderConnections(items){
+  const body = $('connectionsBody');
+  body.innerHTML = '';
+  if (!items.length) {
+    const row = document.createElement('tr');
+    row.innerHTML = '<td colspan="6" class="muted-text">还没有浏览器或 Android App 通过 Token 访问 Agent。</td>';
+    body.appendChild(row);
+    return;
+  }
+  items.forEach(item => {
+    const row = document.createElement('tr');
+    row.innerHTML = '<td><strong>' + escapeHtml(item.name || '-') + '</strong><div class="muted-text">' + escapeHtml(shortId(item.id)) + '</div></td>' +
+      '<td><span class="badge">' + escapeHtml(item.kind || '-') + '</span></td>' +
+      '<td><code title="' + escapeAttr(item.userAgent || '') + '">' + escapeHtml(item.remoteAddr || '-') + '</code><div class="muted-text">' + escapeHtml(item.userAgent || '-') + '</div></td>' +
+      '<td>' + escapeHtml(item.lastSeen || '-') + '<div class="muted-text">First: ' + escapeHtml(item.firstSeen || '-') + '</div></td>' +
+      '<td><code>' + escapeHtml((item.lastMethod || '') + ' ' + (item.lastPath || '')) + '</code></td>' +
+      '<td>' + String(item.requests || 0) + '</td>';
+    body.appendChild(row);
+  });
+}
+function shortId(value){ value = String(value || ''); return value.length > 28 ? value.slice(0, 28) + '...' : value; }
+function escapeHtml(v){ return String(v).replace(/[&<>"']/g, ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch])); }
+function escapeAttr(v){ return escapeHtml(v); }
+$('refreshConnections').onclick = () => loadConnections().catch(err => setState(err.message, 'error'));
+loadConnections().catch(err => setState(err.message, 'error'));
+setInterval(() => loadConnections().catch(err => setState(err.message, 'error')), 3000);
+`
 }
 
 func terminalJS() string {
@@ -315,11 +401,20 @@ const ansiColors = [0x0b1220,0xdc2626,0x16a34a,0xd97706,0x2563eb,0xc026d3,0x0891
 const state = {
   baseUrl: store.getItem('easycodex.baseUrl') || location.origin,
   token: store.getItem('easycodex.token') || '',
+  clientId: browserClientId(),
   instanceId: 'main',
   defaults: {instanceId:'main', cwd:'D:\\mgame', command:['cmd.exe','/k','cd /d D:\\mgame && codex --dangerously-bypass-approvals-and-sandbox']},
   panes: [], paneId: '', snapshotHash: '', pollTimer: 0, pollToken: 0, selectedPane: null
 };
 
+function browserClientId(){
+  let id = store.getItem('easycodex.clientId') || '';
+  if (!id) {
+    id = 'browser:' + (window.crypto && crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + '-' + Math.random().toString(16).slice(2));
+    store.setItem('easycodex.clientId', id);
+  }
+  return id;
+}
 function initFromHash(){
   if (!location.hash || location.hash.length < 2) return;
   const params = new URLSearchParams(location.hash.slice(1));
@@ -350,7 +445,7 @@ function setStatus(text, kind){
 }
 async function api(path, options, auth){
   options = options || {};
-  const headers = {'Accept':'application/json'};
+  const headers = {'Accept':'application/json', 'X-EasyCodex-Client-ID': state.clientId, 'X-EasyCodex-Client-Kind': 'browser', 'X-EasyCodex-Client-Name': 'Browser Terminal'};
   if (auth !== false) headers['Authorization'] = 'Bearer ' + state.token;
   if (options.body !== undefined) headers['Content-Type'] = 'application/json';
   const res = await fetch(state.baseUrl + path, {

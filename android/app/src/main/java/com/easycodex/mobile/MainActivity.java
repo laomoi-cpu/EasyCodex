@@ -53,6 +53,7 @@ import java.util.ArrayList;
 import java.util.Date;
 import java.util.Locale;
 import java.util.List;
+import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -85,6 +86,7 @@ public class MainActivity extends Activity {
 
     private String baseUrl = "http://127.0.0.1:8765";
     private String token = "";
+    private String clientId = "";
     private String instanceId = "main";
     private String defaultInstanceId = "main";
     private String defaultCwd = "D:\\mgame";
@@ -928,6 +930,7 @@ public class MainActivity extends Activity {
                 conn.setConnectTimeout(5000);
                 conn.setReadTimeout(10000);
                 conn.setRequestProperty("Accept", "application/json");
+                applyClientHeaders(conn);
                 int code = conn.getResponseCode();
                 String text = readAll(code >= 400 ? conn.getErrorStream() : conn.getInputStream());
                 JSONObject json = new JSONObject(text.isEmpty() ? "{}" : text);
@@ -963,6 +966,7 @@ public class MainActivity extends Activity {
                 conn.setConnectTimeout(5000);
                 conn.setReadTimeout(10000);
                 conn.setRequestProperty("Accept", "application/json");
+                applyClientHeaders(conn);
                 if (auth) {
                     conn.setRequestProperty("Authorization", "Bearer " + token);
                 }
@@ -1000,6 +1004,13 @@ public class MainActivity extends Activity {
         });
     }
 
+    private void applyClientHeaders(HttpURLConnection conn) {
+        conn.setRequestProperty("User-Agent", "EasyCodex-Android/1");
+        conn.setRequestProperty("X-EasyCodex-Client-ID", clientId);
+        conn.setRequestProperty("X-EasyCodex-Client-Kind", "android");
+        conn.setRequestProperty("X-EasyCodex-Client-Name", "Android App");
+    }
+
     private String readAll(InputStream stream) throws Exception {
         if (stream == null) {
             return "{}";
@@ -1027,6 +1038,11 @@ public class MainActivity extends Activity {
         SharedPreferences prefs = getSharedPreferences("easycodex", MODE_PRIVATE);
         baseUrl = prefs.getString("baseUrl", baseUrl);
         token = prefs.getString("token", token);
+        clientId = prefs.getString("clientId", "");
+        if (clientId.isEmpty()) {
+            clientId = "android:" + UUID.randomUUID().toString();
+            prefs.edit().putString("clientId", clientId).apply();
+        }
         showTerminalColors = prefs.getBoolean("showTerminalColors", showTerminalColors);
         loadConnectionHistory(prefs);
     }

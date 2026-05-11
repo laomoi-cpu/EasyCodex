@@ -290,8 +290,75 @@ func TestTerminalPageIsAvailableRemotely(t *testing.T) {
 		t.Fatalf("status = %d body = %s", rec.Code, rec.Body.String())
 	}
 	body := rec.Body.String()
-	if !strings.Contains(body, "Browser Terminal") || !strings.Contains(body, "terminalApp") || !strings.Contains(body, "snapshot?lines=180&escapes=1") {
+	if !strings.Contains(body, "Browser Terminal") ||
+		!strings.Contains(body, "terminalApp") ||
+		!strings.Contains(body, `class="page-terminal"`) ||
+		!strings.Contains(body, ".page-terminal .terminal-output{min-height:60dvh") ||
+		!strings.Contains(body, "snapshot?lines=180&escapes=1") {
 		t.Fatalf("unexpected terminal page: %s", body)
+	}
+}
+
+func TestConsoleNavOmitsTerminalAndIncludesConnections(t *testing.T) {
+	srv, _ := testServer(t)
+	req := httptest.NewRequest(http.MethodGet, "/status", nil)
+	req.RemoteAddr = "127.0.0.1:12345"
+	rec := httptest.NewRecorder()
+
+	srv.Handler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d body = %s", rec.Code, rec.Body.String())
+	}
+	body := rec.Body.String()
+	if strings.Contains(body, `href="/terminal">Terminal`) {
+		t.Fatalf("terminal link should not be in console nav: %s", body)
+	}
+	if !strings.Contains(body, `href="/connections">Connections`) {
+		t.Fatalf("connections link should be in console nav: %s", body)
+	}
+}
+
+func TestConnectionsTracksAuthenticatedClients(t *testing.T) {
+	srv, _ := testServer(t)
+	req := httptest.NewRequest(http.MethodGet, "/api/instances", nil)
+	req.RemoteAddr = "192.168.1.50:4567"
+	req.Header.Set("Authorization", "Bearer secret")
+	req.Header.Set("User-Agent", "EasyCodex-Android/1")
+	req.Header.Set("X-EasyCodex-Client-ID", "android:test-device")
+	req.Header.Set("X-EasyCodex-Client-Kind", "android")
+	req.Header.Set("X-EasyCodex-Client-Name", "Android App")
+	rec := httptest.NewRecorder()
+
+	srv.Handler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d body = %s", rec.Code, rec.Body.String())
+	}
+
+	listReq := httptest.NewRequest(http.MethodGet, "/api/connections", nil)
+	listReq.RemoteAddr = "127.0.0.1:12345"
+	listRec := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(listRec, listReq)
+
+	if listRec.Code != http.StatusOK {
+		t.Fatalf("status = %d body = %s", listRec.Code, listRec.Body.String())
+	}
+	var payload struct {
+		OK   bool `json:"ok"`
+		Data struct {
+			Connections []clientConnection `json:"connections"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(listRec.Body.Bytes(), &payload); err != nil {
+		t.Fatal(err)
+	}
+	if !payload.OK || len(payload.Data.Connections) != 1 {
+		t.Fatalf("unexpected connections payload: %#v", payload)
+	}
+	item := payload.Data.Connections[0]
+	if item.ID != "android:test-device" || item.Kind != "Android App" || item.RemoteAddr != "192.168.1.50" || item.LastPath != "/api/instances" || item.Requests != 1 {
+		t.Fatalf("unexpected connection item: %#v", item)
 	}
 }
 
