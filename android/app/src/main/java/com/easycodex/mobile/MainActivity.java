@@ -186,11 +186,9 @@ public class MainActivity extends Activity {
 
         Button scanButton = iconButton("扫码");
         Button settingsButton = iconButton("设置");
-        Button reloadButton = iconButton("刷新");
         topBar.addView(statusView, rowWeightParams(1, dp(34), 0, dp(6)));
         topBar.addView(scanButton, rowFixedParams(dp(56), dp(34), 0, dp(6)));
-        topBar.addView(settingsButton, rowFixedParams(dp(56), dp(34), 0, dp(6)));
-        topBar.addView(reloadButton, rowFixedParams(dp(56), dp(34), 0, 0));
+        topBar.addView(settingsButton, rowFixedParams(dp(56), dp(34), 0, 0));
         root.addView(topBar, matchWrap());
 
         webView = new WebView(this);
@@ -201,7 +199,6 @@ public class MainActivity extends Activity {
         statusView.setOnClickListener(v -> testConnection(true));
         scanButton.setOnClickListener(v -> startQrScan());
         settingsButton.setOnClickListener(v -> showSettingsDialog());
-        reloadButton.setOnClickListener(v -> loadTerminal());
     }
 
     private void configureWebView() {
