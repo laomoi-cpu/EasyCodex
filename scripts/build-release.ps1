@@ -47,13 +47,19 @@ if (Test-Path -LiteralPath $agentConfigExample) {
     Copy-Item -LiteralPath $agentConfigExample -Destination (Join-Path $releaseDir "agent\config.example.json") -Force
 }
 
+$agentTray = Join-Path $repoRoot "agent\tray.ps1"
+if (Test-Path -LiteralPath $agentTray) {
+    New-Item -ItemType Directory -Force -Path (Join-Path $releaseDir "agent") | Out-Null
+    Copy-Item -LiteralPath $agentTray -Destination (Join-Path $releaseDir "agent\tray.ps1") -Force
+}
+
 if (-not $SkipAgent) {
     $agentExe = Join-Path $releaseDir "EasyCodex-$Version.exe"
     Push-Location (Join-Path $repoRoot "agent")
     try {
         $env:GOOS = "windows"
         $env:GOARCH = "amd64"
-        go build -trimpath -ldflags "-s -w" -o $agentExe .\cmd\easycodex-agent
+        go build -trimpath -ldflags "-s -w -H windowsgui" -o $agentExe .\cmd\easycodex-agent
     } finally {
         Pop-Location
         Remove-Item Env:\GOOS -ErrorAction SilentlyContinue
@@ -96,7 +102,8 @@ $manifest = [ordered]@{
         "EasyCodex-$Version.apk",
         "bin/",
         "wezterm-config/",
-        "agent/config.example.json"
+        "agent/config.example.json",
+        "agent/tray.ps1"
     )
 }
 $manifest | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $releaseDir "manifest.json") -Encoding UTF8

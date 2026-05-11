@@ -1,5 +1,7 @@
 # EasyCodex
 
+最新版本下载：[EasyCodex 0.0.6](https://github.com/laomoi-cpu/EasyCodex/releases/download/v0.0.6/EasyCodex-0.0.6.zip)
+
 EasyCodex 是一个面向 Codex 用户的 Windows 远程终端工作台。
 
 它的核心目标很简单：让你在 PC 上正常用命令行或 CLI 跑 Codex，离开电脑后还能用手机继续查看进度、发送指令、启动新会话；回到电脑时，又能继续在原来的命令行窗口里工作。
