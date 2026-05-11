@@ -585,10 +585,14 @@ func TestTerminalPageIsAvailableRemotely(t *testing.T) {
 		!strings.Contains(body, ".page-terminal .pane-list{display:flex;gap:5px;min-width:0;overflow-x:auto;overflow-y:hidden") ||
 		!strings.Contains(body, ".page-terminal #newSession{width:32px") ||
 		!strings.Contains(body, ".page-terminal #refreshSessions{width:58px") ||
+		!strings.Contains(body, `id="toggleFullscreen"`) ||
+		!strings.Contains(body, ".terminal-app:fullscreen") ||
 		!strings.Contains(body, `id="attachmentPanel"`) ||
 		!strings.Contains(body, "function apiForm(path, formData)") ||
 		!strings.Contains(body, "function uploadPendingAttachments()") ||
 		!strings.Contains(body, "function handlePaste(event)") ||
+		!strings.Contains(body, "function toggleFullscreen()") ||
+		!strings.Contains(body, "document.addEventListener('fullscreenchange'") ||
 		!strings.Contains(body, "addEventListener('drop', handleDrop)") ||
 		!strings.Contains(body, `id="connectionDialog"`) ||
 		!strings.Contains(body, "function openConnectionDialog()") ||
