@@ -156,9 +156,10 @@ type weztermPane struct {
 }
 
 type sessionTree struct {
-	Instance string          `json:"instance"`
-	Windows  []windowSession `json:"windows"`
-	Panes    []paneSession   `json:"panes"`
+	Instance     string          `json:"instance"`
+	WorkingCount int             `json:"workingCount"`
+	Windows      []windowSession `json:"windows"`
+	Panes        []paneSession   `json:"panes"`
 }
 
 type windowSession struct {
@@ -187,6 +188,7 @@ type paneSession struct {
 	LastInputAt      string          `json:"lastInputAt,omitempty"`
 	Workspace        string          `json:"workspace"`
 	IsActive         bool            `json:"isActive"`
+	IsWorking        bool            `json:"isWorking"`
 	IsZoomed         bool            `json:"isZoomed"`
 	CursorX          int             `json:"cursorX"`
 	CursorY          int             `json:"cursorY"`
@@ -1138,6 +1140,9 @@ func normalizeSessions(instanceID string, data json.RawMessage) (sessionTree, er
 	tabIndex := map[int]map[int]int{}
 	for _, raw := range rawPanes {
 		pane := paneFromWezTerm(raw)
+		if pane.IsWorking {
+			tree.WorkingCount++
+		}
 		tree.Panes = append(tree.Panes, pane)
 
 		wIndex, ok := windowIndex[raw.WindowID]
@@ -1198,6 +1203,7 @@ func paneFromWezTerm(raw weztermPane) paneSession {
 		CWD:              raw.CWD,
 		Workspace:        raw.Workspace,
 		IsActive:         raw.IsActive,
+		IsWorking:        isWorkingPane(raw),
 		IsZoomed:         raw.IsZoomed,
 		CursorX:          raw.CursorX,
 		CursorY:          raw.CursorY,
@@ -1208,6 +1214,27 @@ func paneFromWezTerm(raw weztermPane) paneSession {
 		TTYName:          raw.TTYName,
 		Size:             raw.Size,
 	}
+}
+
+func isWorkingPane(raw weztermPane) bool {
+	title := strings.ToLower(raw.Title + " " + raw.TabTitle)
+	for _, marker := range []string{"working", "thinking", "running"} {
+		if strings.Contains(title, marker) {
+			return true
+		}
+	}
+	original := raw.Title + " " + raw.TabTitle
+	for _, frame := range codexSpinnerFrames {
+		if strings.Contains(original, frame) {
+			return true
+		}
+	}
+	return false
+}
+
+var codexSpinnerFrames = []string{
+	"\u280b", "\u2819", "\u2839", "\u2838", "\u283c", "\u2834", "\u2826", "\u2827", "\u2807", "\u280f",
+	"\u25d0", "\u25d3", "\u25d1", "\u25d2",
 }
 
 func sortSessionTree(tree *sessionTree) {

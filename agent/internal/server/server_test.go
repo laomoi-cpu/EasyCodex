@@ -572,6 +572,7 @@ func TestTerminalPageIsAvailableRemotely(t *testing.T) {
 		!strings.Contains(body, `class="page-terminal"`) ||
 		!strings.Contains(body, ".page-terminal main{max-width:none;height:100dvh") ||
 		!strings.Contains(body, ".pane-last{display:block") ||
+		!strings.Contains(body, ".pane-state{display:inline-flex") ||
 		!strings.Contains(body, ".page-terminal .terminal-output{min-height:62dvh") ||
 		!strings.Contains(body, ".page-terminal .send-row{position:sticky") ||
 		!strings.Contains(body, ".key-panel[hidden]{display:none!important}") ||
@@ -587,6 +588,9 @@ func TestTerminalPageIsAvailableRemotely(t *testing.T) {
 		!strings.Contains(body, "function openConnectionDialog()") ||
 		!strings.Contains(body, "$('editConnection').onclick = () => openConnectionDialog()") ||
 		!strings.Contains(body, "function fitTerminalFont()") ||
+		!strings.Contains(body, "function applySessionsData(data)") ||
+		!strings.Contains(body, "function updateDocumentTitle()") ||
+		!strings.Contains(body, "baseDocumentTitle") ||
 		!strings.Contains(body, "function markPaneInput(text)") ||
 		!strings.Contains(body, "await sendRaw(text, enter, true)") ||
 		!strings.Contains(body, "sendRaw(value[0], value[1], false)") ||
@@ -596,6 +600,7 @@ func TestTerminalPageIsAvailableRemotely(t *testing.T) {
 		!strings.Contains(body, "document.body.classList.contains('page-terminal')") ||
 		!strings.Contains(body, "event.key === 'Tab' && event.shiftKey") ||
 		!strings.Contains(body, "document.addEventListener('keydown'") ||
+		!strings.Contains(body, "setInterval(() =>") ||
 		!strings.Contains(body, "function setKeyPanel(show)") ||
 		!strings.Contains(body, "$('toggleKeys').onclick = () => setKeyPanel($('keyPanel').hidden)") ||
 		!strings.Contains(body, "snapshot?lines=180&escapes=1") {
@@ -743,9 +748,10 @@ func TestSessionsReturnsWezTermPayload(t *testing.T) {
 	var payload struct {
 		OK   bool `json:"ok"`
 		Data struct {
-			Instance string          `json:"instance"`
-			Windows  []windowSession `json:"windows"`
-			Panes    []paneSession   `json:"panes"`
+			Instance     string          `json:"instance"`
+			WorkingCount int             `json:"workingCount"`
+			Windows      []windowSession `json:"windows"`
+			Panes        []paneSession   `json:"panes"`
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
@@ -757,8 +763,37 @@ func TestSessionsReturnsWezTermPayload(t *testing.T) {
 	if payload.Data.Instance != "main" || len(payload.Data.Windows) != 1 || len(payload.Data.Windows[0].Tabs) != 1 {
 		t.Fatalf("unexpected session tree: %#v", payload.Data)
 	}
+	if payload.Data.WorkingCount != 0 {
+		t.Fatalf("working count = %d", payload.Data.WorkingCount)
+	}
 	if len(payload.Data.Panes) != 2 || payload.Data.Panes[0].PaneID != "3" || payload.Data.Panes[1].PaneID != "4" {
 		t.Fatalf("unexpected panes: %#v", payload.Data.Panes)
+	}
+}
+
+func TestNormalizeSessionsMarksWorkingPanes(t *testing.T) {
+	tree, err := normalizeSessions("main", json.RawMessage(`[
+		{"window_id":1,"window_title":"EasyCodex (1 working) - 3 sessions","tab_id":1,"tab_title":"","pane_id":1,"title":"cmd.exe","cwd":"file:///D:/idle/","workspace":"default","size":{"cols":80,"rows":24}},
+		{"window_id":1,"window_title":"EasyCodex","tab_id":2,"tab_title":"codex thinking","pane_id":2,"title":"mgame","cwd":"file:///D:/mgame/","workspace":"default","size":{"cols":80,"rows":24}},
+		{"window_id":1,"window_title":"EasyCodex","tab_id":3,"tab_title":"","pane_id":3,"title":"\u2838 EasyTerm","cwd":"file:///D:/EasyTerm/","workspace":"default","size":{"cols":80,"rows":24}}
+	]`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tree.WorkingCount != 2 {
+		t.Fatalf("working count = %d", tree.WorkingCount)
+	}
+	if len(tree.Panes) != 3 {
+		t.Fatalf("panes = %#v", tree.Panes)
+	}
+	if tree.Panes[0].IsWorking {
+		t.Fatalf("window title should not mark idle pane working: %#v", tree.Panes[0])
+	}
+	if !tree.Panes[1].IsWorking || !tree.Panes[2].IsWorking {
+		t.Fatalf("expected keyword and spinner panes working: %#v", tree.Panes)
+	}
+	if !tree.Windows[0].Tabs[1].Panes[0].IsWorking || !tree.Windows[0].Tabs[2].Panes[0].IsWorking {
+		t.Fatalf("nested panes missing working state: %#v", tree.Windows[0].Tabs)
 	}
 }
 
