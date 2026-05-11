@@ -576,6 +576,7 @@ func TestTerminalPageIsAvailableRemotely(t *testing.T) {
 		!strings.Contains(body, ".page-terminal .send-row{position:sticky") ||
 		!strings.Contains(body, ".key-panel[hidden]{display:none!important}") ||
 		!strings.Contains(body, ".page-terminal .terminal-app[hidden],.page-terminal .terminal-connect[hidden]{display:none!important}") ||
+		!strings.Contains(body, "font-size:var(--terminal-font-size,14px)") ||
 		!strings.Contains(body, ".page-terminal .terminal-sidebar{border:0;border-radius:0;box-shadow:none;max-height:none;min-height:0;padding:6px;background:#f8fafc;display:grid;grid-template-columns:auto minmax(0,1fr)") ||
 		!strings.Contains(body, ".page-terminal .pane-list{display:flex;gap:5px;min-width:0;overflow-x:auto;overflow-y:hidden") ||
 		!strings.Contains(body, ".page-terminal #newSession{width:32px") ||
@@ -583,6 +584,9 @@ func TestTerminalPageIsAvailableRemotely(t *testing.T) {
 		!strings.Contains(body, `id="connectionDialog"`) ||
 		!strings.Contains(body, "function openConnectionDialog()") ||
 		!strings.Contains(body, "$('editConnection').onclick = () => openConnectionDialog()") ||
+		!strings.Contains(body, "function fitTerminalFont()") ||
+		!strings.Contains(body, "function markPaneInput(text)") ||
+		!strings.Contains(body, "refreshPaneList().catch(() => {})") ||
 		!strings.Contains(body, "function setKeyPanel(show)") ||
 		!strings.Contains(body, "$('toggleKeys').onclick = () => setKeyPanel($('keyPanel').hidden)") ||
 		!strings.Contains(body, "snapshot?lines=180&escapes=1") {
