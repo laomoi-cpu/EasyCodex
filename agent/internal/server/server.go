@@ -2,15 +2,18 @@ package server
 
 import (
 	"context"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
 	"net/http"
+	"os"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -24,6 +27,11 @@ import (
 )
 
 var AppVersion = "dev"
+
+const (
+	maxAttachmentFileBytes  = 25 << 20
+	maxAttachmentTotalBytes = 100 << 20
+)
 
 type WezTerm interface {
 	Launch(ctx context.Context, class string) (int, error)
@@ -133,6 +141,14 @@ type sendTextRequest struct {
 	Enter            bool   `json:"enter"`
 	EnterDelayMillis int    `json:"enterDelayMillis"`
 	RecordInput      *bool  `json:"recordInput,omitempty"`
+}
+
+type attachmentUpload struct {
+	OriginalName string `json:"originalName"`
+	FileName     string `json:"fileName"`
+	Path         string `json:"path"`
+	Size         int64  `json:"size"`
+	MIME         string `json:"mime,omitempty"`
 }
 
 type weztermPane struct {
@@ -257,6 +273,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/instances/{instanceID}/sessions", s.auth(s.sessions))
 	mux.HandleFunc("GET /api/instances/{instanceID}/panes/{paneID}/text", s.auth(s.paneText))
 	mux.HandleFunc("GET /api/instances/{instanceID}/panes/{paneID}/snapshot", s.auth(s.paneSnapshot))
+	mux.HandleFunc("POST /api/instances/{instanceID}/panes/{paneID}/attachments", s.auth(s.uploadAttachments))
 	mux.HandleFunc("POST /api/instances/{instanceID}/panes/{paneID}/send", s.auth(s.sendText))
 	mux.HandleFunc("DELETE /api/instances/{instanceID}/panes/{paneID}", s.auth(s.deletePane))
 	mux.HandleFunc("POST /api/instances/{instanceID}/spawn", s.auth(s.spawn))
@@ -489,6 +506,106 @@ func (s *Server) paneSnapshot(w http.ResponseWriter, r *http.Request) {
 	writeOK(w, http.StatusOK, data)
 }
 
+func (s *Server) uploadAttachments(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.instance(w, r); !ok {
+		return
+	}
+	paneID := r.PathValue("paneID")
+	if !validID(paneID) {
+		writeError(w, http.StatusBadRequest, errors.New("invalid pane id"))
+		return
+	}
+	cfg := s.configSnapshot()
+	root, err := filepath.Abs(cfg.Root)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+
+	r.Body = http.MaxBytesReader(w, r.Body, maxAttachmentTotalBytes+1)
+	if err := r.ParseMultipartForm(maxAttachmentTotalBytes); err != nil {
+		writeError(w, http.StatusBadRequest, fmt.Errorf("invalid attachments: %w", err))
+		return
+	}
+	defer func() {
+		if r.MultipartForm != nil {
+			_ = r.MultipartForm.RemoveAll()
+		}
+	}()
+
+	files := r.MultipartForm.File["files"]
+	if len(files) == 0 {
+		files = r.MultipartForm.File["file"]
+	}
+	if len(files) == 0 {
+		writeError(w, http.StatusBadRequest, errors.New("no attachment files"))
+		return
+	}
+
+	baseDir := filepath.Join(root, ".attachments", time.Now().Format("20060102"), sanitizePathSegment(paneID))
+	if err := os.MkdirAll(baseDir, 0755); err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+
+	var total int64
+	uploads := make([]attachmentUpload, 0, len(files))
+	for _, header := range files {
+		if header.Size > maxAttachmentFileBytes {
+			writeError(w, http.StatusRequestEntityTooLarge, fmt.Errorf("attachment %q exceeds 25MB", header.Filename))
+			return
+		}
+		total += header.Size
+		if total > maxAttachmentTotalBytes {
+			writeError(w, http.StatusRequestEntityTooLarge, errors.New("attachments exceed 100MB"))
+			return
+		}
+		src, err := header.Open()
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err)
+			return
+		}
+
+		name := uniqueAttachmentName(header.Filename)
+		dstPath := filepath.Join(baseDir, name)
+		if !isWithinDir(baseDir, dstPath) {
+			_ = src.Close()
+			writeError(w, http.StatusBadRequest, errors.New("invalid attachment path"))
+			return
+		}
+		dst, err := os.OpenFile(dstPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0644)
+		if err != nil {
+			_ = src.Close()
+			writeError(w, http.StatusInternalServerError, err)
+			return
+		}
+		written, copyErr := io.Copy(dst, io.LimitReader(src, maxAttachmentFileBytes+1))
+		closeErr := dst.Close()
+		_ = src.Close()
+		if copyErr != nil {
+			writeError(w, http.StatusInternalServerError, copyErr)
+			return
+		}
+		if closeErr != nil {
+			writeError(w, http.StatusInternalServerError, closeErr)
+			return
+		}
+		if written > maxAttachmentFileBytes {
+			_ = os.Remove(dstPath)
+			writeError(w, http.StatusRequestEntityTooLarge, fmt.Errorf("attachment %q exceeds 25MB", header.Filename))
+			return
+		}
+		uploads = append(uploads, attachmentUpload{
+			OriginalName: header.Filename,
+			FileName:     name,
+			Path:         dstPath,
+			Size:         written,
+			MIME:         header.Header.Get("Content-Type"),
+		})
+	}
+	writeOK(w, http.StatusOK, map[string]any{"attachments": uploads})
+}
+
 func (s *Server) sendText(w http.ResponseWriter, r *http.Request) {
 	instance, ok := s.instance(w, r)
 	if !ok {
@@ -667,6 +784,67 @@ func containsTerminalControl(text string) bool {
 		}
 	}
 	return false
+}
+
+func uniqueAttachmentName(original string) string {
+	clean := sanitizeFileName(original)
+	ext := filepath.Ext(clean)
+	stem := strings.TrimSuffix(clean, ext)
+	if stem == "" {
+		stem = "attachment"
+	}
+	return stem + "-" + randomHex(4) + ext
+}
+
+func sanitizeFileName(name string) string {
+	name = filepath.Base(strings.TrimSpace(name))
+	name = strings.Map(func(r rune) rune {
+		switch r {
+		case '<', '>', ':', '"', '/', '\\', '|', '?', '*':
+			return '_'
+		}
+		if r < 32 || r == 127 {
+			return '_'
+		}
+		return r
+	}, name)
+	name = strings.Trim(name, " .")
+	if name == "" || name == "." || name == ".." {
+		return "attachment"
+	}
+	return name
+}
+
+func sanitizePathSegment(value string) string {
+	value = sanitizeFileName(value)
+	if value == "attachment" {
+		return "pane"
+	}
+	return value
+}
+
+func randomHex(bytesLen int) string {
+	buf := make([]byte, bytesLen)
+	if _, err := rand.Read(buf); err != nil {
+		return strconv.FormatInt(time.Now().UnixNano(), 16)
+	}
+	return hex.EncodeToString(buf)
+}
+
+func isWithinDir(baseDir, path string) bool {
+	baseAbs, err := filepath.Abs(baseDir)
+	if err != nil {
+		return false
+	}
+	pathAbs, err := filepath.Abs(path)
+	if err != nil {
+		return false
+	}
+	rel, err := filepath.Rel(baseAbs, pathAbs)
+	if err != nil {
+		return false
+	}
+	return rel == "." || (rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)))
 }
 
 func summarizePaneInput(text string, limit int) string {

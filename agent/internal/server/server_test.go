@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -584,6 +585,11 @@ func TestTerminalPageIsAvailableRemotely(t *testing.T) {
 		!strings.Contains(body, ".page-terminal .pane-list{display:flex;gap:5px;min-width:0;overflow-x:auto;overflow-y:hidden") ||
 		!strings.Contains(body, ".page-terminal #newSession{width:32px") ||
 		!strings.Contains(body, ".page-terminal #refreshSessions{width:58px") ||
+		!strings.Contains(body, `id="attachmentPanel"`) ||
+		!strings.Contains(body, "function apiForm(path, formData)") ||
+		!strings.Contains(body, "function uploadPendingAttachments()") ||
+		!strings.Contains(body, "function handlePaste(event)") ||
+		!strings.Contains(body, "addEventListener('drop', handleDrop)") ||
 		!strings.Contains(body, `id="connectionDialog"`) ||
 		!strings.Contains(body, "function openConnectionDialog()") ||
 		!strings.Contains(body, "$('editConnection').onclick = () => openConnectionDialog()") ||
@@ -598,7 +604,7 @@ func TestTerminalPageIsAvailableRemotely(t *testing.T) {
 		!strings.Contains(body, "recordInput: !!recordInput") ||
 		!strings.Contains(body, "row.onpointerdown = event =>") ||
 		!strings.Contains(body, "if (state.paneId === paneId)") ||
-		!strings.Contains(body, "await sendRaw(text, enter, true)") ||
+		!strings.Contains(body, "await sendRaw(appendAttachmentPaths(text, uploads), enter, true)") ||
 		!strings.Contains(body, "sendRaw(value[0], value[1], false)") ||
 		!strings.Contains(body, "refreshPaneList().catch(() => {})") ||
 		!strings.Contains(body, "function terminalShortcutFromEvent(event)") ||
@@ -898,6 +904,111 @@ func TestPaneSnapshotOmitsTextWhenUnchanged(t *testing.T) {
 	if !payload.OK || payload.Data.Changed || payload.Data.Text != "" || payload.Data.Hash != hashText("hello") {
 		t.Fatalf("unexpected payload: %#v", payload)
 	}
+}
+
+func TestUploadAttachmentsSavesFiles(t *testing.T) {
+	root := t.TempDir()
+	cfg := config.Config{
+		Listen: "127.0.0.1:0",
+		Root:   root,
+		Token:  "secret",
+		Instances: []config.Instance{
+			{ID: "main", Name: "main", Class: "easycodex"},
+		},
+	}
+	srv, err := New(cfg, &fakeWezTerm{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, contentType := multipartUploadBody(t, map[string]string{
+		`..\bad:name?.txt`: "hello attachment",
+		"screenshot.png":   "png bytes",
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/instances/main/panes/3/attachments", body)
+	req.Header.Set("Authorization", "Bearer secret")
+	req.Header.Set("Content-Type", contentType)
+	rec := httptest.NewRecorder()
+
+	srv.Handler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d body = %s", rec.Code, rec.Body.String())
+	}
+	var payload struct {
+		OK   bool `json:"ok"`
+		Data struct {
+			Attachments []attachmentUpload `json:"attachments"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatal(err)
+	}
+	if !payload.OK || len(payload.Data.Attachments) != 2 {
+		t.Fatalf("unexpected payload: %#v", payload)
+	}
+	for _, item := range payload.Data.Attachments {
+		if !isWithinDir(filepath.Join(root, ".attachments"), item.Path) {
+			t.Fatalf("path outside attachments dir: %q", item.Path)
+		}
+		if strings.ContainsAny(item.FileName, `<>:"/\|?*`) {
+			t.Fatalf("filename was not sanitized: %q", item.FileName)
+		}
+		data, err := os.ReadFile(item.Path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(data) == 0 || item.Size != int64(len(data)) {
+			t.Fatalf("unexpected saved file: %#v len=%d", item, len(data))
+		}
+	}
+}
+
+func TestUploadAttachmentsRejectsOversizedFile(t *testing.T) {
+	root := t.TempDir()
+	cfg := config.Config{
+		Listen: "127.0.0.1:0",
+		Root:   root,
+		Token:  "secret",
+		Instances: []config.Instance{
+			{ID: "main", Name: "main", Class: "easycodex"},
+		},
+	}
+	srv, err := New(cfg, &fakeWezTerm{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, contentType := multipartUploadBody(t, map[string]string{
+		"large.txt": strings.Repeat("x", maxAttachmentFileBytes+1),
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/instances/main/panes/3/attachments", body)
+	req.Header.Set("Authorization", "Bearer secret")
+	req.Header.Set("Content-Type", contentType)
+	rec := httptest.NewRecorder()
+
+	srv.Handler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("status = %d body = %s", rec.Code, rec.Body.String())
+	}
+}
+
+func multipartUploadBody(t *testing.T, files map[string]string) (*bytes.Buffer, string) {
+	t.Helper()
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+	for name, content := range files {
+		part, err := writer.CreateFormFile("files", name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := part.Write([]byte(content)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return body, writer.FormDataContentType()
 }
 
 func TestSendText(t *testing.T) {
