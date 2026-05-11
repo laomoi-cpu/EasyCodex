@@ -7,6 +7,7 @@ import android.content.ClipData;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.content.pm.ActivityInfo;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.graphics.Typeface;
@@ -78,6 +79,8 @@ public class MainActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
+        enterImmersiveFullscreen();
         getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
         loadSettings();
         buildUi();
@@ -95,6 +98,20 @@ public class MainActivity extends Activity {
         super.onNewIntent(intent);
         setIntent(intent);
         handlePairingIntent(intent);
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        enterImmersiveFullscreen();
+    }
+
+    @Override
+    public void onWindowFocusChanged(boolean hasFocus) {
+        super.onWindowFocusChanged(hasFocus);
+        if (hasFocus) {
+            enterImmersiveFullscreen();
+        }
     }
 
     @Override
@@ -261,6 +278,7 @@ public class MainActivity extends Activity {
 
             @Override
             public void onPageFinished(WebView view, String url) {
+                applyAndroidPageChrome();
                 setStatus("已打开", "ok");
             }
 
@@ -280,6 +298,26 @@ public class MainActivity extends Activity {
         String url = terminalUrl();
         setStatus("加载中", "work");
         webView.loadUrl(url);
+    }
+
+    private void enterImmersiveFullscreen() {
+        getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN, WindowManager.LayoutParams.FLAG_FULLSCREEN);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
+            getWindow().getDecorView().setSystemUiVisibility(
+                    View.SYSTEM_UI_FLAG_FULLSCREEN
+                            | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                            | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+                            | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                            | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                            | View.SYSTEM_UI_FLAG_LAYOUT_STABLE);
+        }
+    }
+
+    private void applyAndroidPageChrome() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.KITKAT || webView == null) {
+            return;
+        }
+        webView.evaluateJavascript("(function(){var s=document.getElementById('easycodex-android-css');if(!s){s=document.createElement('style');s.id='easycodex-android-css';document.head.appendChild(s);}s.textContent='.terminal-statusbar{display:none!important;} .terminal-output{padding-top:10px!important;}';})();", null);
     }
 
     private String terminalUrl() {

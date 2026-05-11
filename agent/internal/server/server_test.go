@@ -584,7 +584,6 @@ func TestTerminalPageIsAvailableRemotely(t *testing.T) {
 		!strings.Contains(body, ".page-terminal .terminal-sidebar{border:0;border-radius:0;box-shadow:none;max-height:none;min-height:0;padding:6px;background:#1f1f1f;display:grid;grid-template-columns:auto minmax(0,1fr)") ||
 		!strings.Contains(body, ".page-terminal .pane-list{display:flex;gap:5px;min-width:0;overflow-x:auto;overflow-y:hidden") ||
 		!strings.Contains(body, ".page-terminal #newSession{width:32px") ||
-		!strings.Contains(body, ".page-terminal #refreshSessions{width:58px") ||
 		!strings.Contains(body, `id="toggleFullscreen"`) ||
 		!strings.Contains(body, ".terminal-app:fullscreen") ||
 		!strings.Contains(body, `id="attachmentPanel"`) ||
@@ -627,7 +626,9 @@ func TestTerminalPageIsAvailableRemotely(t *testing.T) {
 		!strings.Contains(body, "/api/codex/sessions?limit=20") ||
 		!strings.Contains(body, "['cmd.exe','/k','codex','resume']") ||
 		!strings.Contains(body, "if (session.cwd) $('spawnCwd').value = spawnCwdFromValue(session.cwd)") ||
-		!strings.Contains(body, "snapshot?lines=180&escapes=1") {
+		!strings.Contains(body, "snapshot?lines=180&escapes=1") ||
+		strings.Contains(body, `id="refreshSessions"`) ||
+		strings.Contains(body, "$('refreshSessions')") {
 		t.Fatalf("unexpected terminal page: %s", body)
 	}
 }
