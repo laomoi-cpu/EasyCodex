@@ -11,6 +11,9 @@ on:
         required: true
         default: "0.0.1"
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: windows-latest
@@ -57,8 +60,26 @@ jobs:
         shell: pwsh
         run: .\scripts\build-release.ps1 -Version "${{ steps.version.outputs.version }}"
 
+      - name: Compress package
+        shell: pwsh
+        run: Compress-Archive -Path "${{ steps.version.outputs.version }}\*" -DestinationPath "EasyCodex-${{ steps.version.outputs.version }}.zip" -Force
+
       - name: Upload package
         uses: actions/upload-artifact@v4
         with:
           name: EasyCodex-${{ steps.version.outputs.version }}
-          path: ${{ steps.version.outputs.version }}/**
+          path: |
+            EasyCodex-${{ steps.version.outputs.version }}.zip
+            ${{ steps.version.outputs.version }}/**
+
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          name: EasyCodex ${{ github.ref_name }}
+          tag_name: ${{ github.ref_name }}
+          files: |
+            EasyCodex-${{ steps.version.outputs.version }}.zip
+            ${{ steps.version.outputs.version }}/EasyCodex-${{ steps.version.outputs.version }}.exe
+            ${{ steps.version.outputs.version }}/EasyCodex-${{ steps.version.outputs.version }}.apk
+            ${{ steps.version.outputs.version }}/manifest.json
