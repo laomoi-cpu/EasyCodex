@@ -1015,9 +1015,26 @@ async function toggleFullscreen(){
       throw new Error(i18n.fullscreenUnavailable || 'Fullscreen is not supported by this browser');
     }
     await target.requestFullscreen();
+    await lockPortraitFullscreen();
   } catch (err) {
     setStatus(err.message, 'err');
   }
+}
+async function lockPortraitFullscreen(){
+  const orientation = screen && screen.orientation;
+  if (!orientation || !orientation.lock) return;
+  try {
+    await orientation.lock('portrait');
+  } catch (err) {
+    // Some mobile browsers only allow fullscreen without orientation lock.
+  }
+}
+function unlockFullscreenOrientation(){
+  const orientation = screen && screen.orientation;
+  if (!orientation || !orientation.unlock) return;
+  try {
+    orientation.unlock();
+  } catch (err) {}
 }
 function updateFullscreenButton(){
   const button = $('toggleFullscreen');
@@ -1271,6 +1288,7 @@ document.addEventListener('keydown', event => {
   sendSpecialKey(key);
 });
 document.addEventListener('fullscreenchange', () => {
+  if (!document.fullscreenElement) unlockFullscreenOrientation();
   updateFullscreenButton();
   fitTerminalFont();
 });

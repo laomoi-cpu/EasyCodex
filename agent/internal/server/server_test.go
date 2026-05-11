@@ -592,6 +592,8 @@ func TestTerminalPageIsAvailableRemotely(t *testing.T) {
 		!strings.Contains(body, "function uploadPendingAttachments()") ||
 		!strings.Contains(body, "function handlePaste(event)") ||
 		!strings.Contains(body, "function toggleFullscreen()") ||
+		!strings.Contains(body, "await lockPortraitFullscreen()") ||
+		!strings.Contains(body, "orientation.lock('portrait')") ||
 		!strings.Contains(body, "document.addEventListener('fullscreenchange'") ||
 		!strings.Contains(body, "addEventListener('drop', handleDrop)") ||
 		!strings.Contains(body, `id="connectionDialog"`) ||
