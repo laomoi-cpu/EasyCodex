@@ -297,6 +297,7 @@ func settingsPageHTML() string {
       <label><span>Public Base URL</span><input id="publicBaseUrl" autocomplete="off" placeholder="http://100.x.y.z:8765"></label>
       <label><span>EasyCodex root</span><input id="root" autocomplete="off"></label>
       <label><span>Command timeout seconds</span><input id="timeout" type="number" min="1" max="120"></label>
+      <label><span>Current version</span><input id="version" readonly></label>
     </div>
     <label class="check-row"><input id="regenToken" type="checkbox"><span>Regenerate API token every Agent startup</span></label>
     <label class="check-row"><input id="closeGui" type="checkbox"><span>Close GUI windows launched by Agent when Agent exits</span></label>
@@ -749,12 +750,14 @@ if (state.token) connect().catch(err => { showConnect(true); setStatus(err.messa
 func settingsJS() string {
 	return `
 let currentConfig = null;
+let currentVersion = 'dev';
 const $ = id => document.getElementById(id);
 function setState(text, kind='muted'){ const el=$('saveState'); el.className='status-card '+kind; el.textContent=text; }
 function lines(value){ return value.split(/\r?\n/).map(x=>x.trim()).filter(Boolean); }
 function fill(){
   const c=currentConfig;
   $('listen').value=c.listen||''; $('token').value=c.token||''; $('publicBaseUrl').value=c.publicBaseUrl||''; $('root').value=c.root||'';
+  $('version').value=currentVersion||'dev';
   $('timeout').value=c.commandTimeoutSeconds||5; $('regenToken').checked=!!c.regenerateTokenOnStart; $('closeGui').checked=!!c.closeLaunchedGuiOnExit;
   $('defaultCwd').value=(c.mobileDefaults&&c.mobileDefaults.cwd)||'';
   $('defaultCommand').value=((c.mobileDefaults&&c.mobileDefaults.command)||[]).join('\n');
@@ -808,13 +811,13 @@ function collect(){
 async function load(){
   setState('Loading...');
   const res=await fetch('/api/settings'); const payload=await res.json(); if(!payload.ok) throw new Error(payload.error);
-  currentConfig=payload.data.config; fill(); setState('Config: '+payload.data.configPath);
+  currentConfig=payload.data.config; currentVersion=payload.data.version||'dev'; fill(); setState('Config: '+payload.data.configPath);
 }
 async function save(event){
   event.preventDefault(); setState('Saving...');
   const res=await fetch('/api/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(collect())});
   const payload=await res.json(); if(!payload.ok){ setState(payload.error,'error'); return; }
-  currentConfig=payload.data.config; fill();
+  currentConfig=payload.data.config; currentVersion=payload.data.version||currentVersion; fill();
   const restart=payload.data.restartRequired ? ' Restart Agent for: '+payload.data.restartFields.join(', ') : '';
   setState('Saved to '+payload.data.configPath+'.'+restart);
 }

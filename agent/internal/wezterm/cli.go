@@ -12,6 +12,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"easycodex-agent/internal/winproc"
 )
 
 type CLI struct {
@@ -140,6 +142,7 @@ func (cli CLI) run(ctx context.Context, class string, stdin *strings.Reader, arg
 
 	allArgs := append([]string{"cli", "--class", class}, args...)
 	cmd := exec.CommandContext(cmdCtx, weztermPath, allArgs...)
+	winproc.HideWindow(cmd)
 	cmd.Dir = muxDir(root)
 	if stdin != nil {
 		cmd.Stdin = stdin

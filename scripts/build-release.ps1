@@ -59,7 +59,7 @@ if (-not $SkipAgent) {
     try {
         $env:GOOS = "windows"
         $env:GOARCH = "amd64"
-        go build -trimpath -ldflags "-s -w -H windowsgui" -o $agentExe .\cmd\easycodex-agent
+        go build -trimpath -ldflags "-s -w -H windowsgui -X main.version=$Version" -o $agentExe .\cmd\easycodex-agent
     } finally {
         Pop-Location
         Remove-Item Env:\GOOS -ErrorAction SilentlyContinue

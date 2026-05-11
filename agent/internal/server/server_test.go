@@ -246,6 +246,46 @@ func TestSettingsSaveWritesConfigAndUpdatesAuth(t *testing.T) {
 	}
 }
 
+func TestSettingsIncludesVersion(t *testing.T) {
+	previous := AppVersion
+	AppVersion = "1.2.3-test"
+	t.Cleanup(func() { AppVersion = previous })
+	srv, _ := testServer(t)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/settings", nil)
+	req.RemoteAddr = "127.0.0.1:12345"
+	rec := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d body = %s", rec.Code, rec.Body.String())
+	}
+	var payload struct {
+		OK   bool `json:"ok"`
+		Data struct {
+			Version string `json:"version"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatal(err)
+	}
+	if !payload.OK || payload.Data.Version != "1.2.3-test" {
+		t.Fatalf("unexpected settings payload: %#v", payload)
+	}
+
+	pageReq := httptest.NewRequest(http.MethodGet, "/settings", nil)
+	pageReq.RemoteAddr = "127.0.0.1:12345"
+	pageRec := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(pageRec, pageReq)
+	if pageRec.Code != http.StatusOK {
+		t.Fatalf("page status = %d body = %s", pageRec.Code, pageRec.Body.String())
+	}
+	body := pageRec.Body.String()
+	if !strings.Contains(body, "Current version") || !strings.Contains(body, `id="version"`) {
+		t.Fatalf("expected version field in settings page: %s", body)
+	}
+}
+
 func TestPairingPageIncludesPublicBaseURL(t *testing.T) {
 	cfg := config.Defaults()
 	cfg.Listen = "127.0.0.1:0"

@@ -23,6 +23,8 @@ import (
 	"easycodex-agent/internal/qr"
 )
 
+var AppVersion = "dev"
+
 type WezTerm interface {
 	Launch(ctx context.Context, class string) (int, error)
 	List(ctx context.Context, class string) (json.RawMessage, error)
@@ -78,6 +80,7 @@ type settingsResponse struct {
 	Config          config.Config `json:"config"`
 	ConfigPath      string        `json:"configPath"`
 	Network         netinfo.Info  `json:"network"`
+	Version         string        `json:"version"`
 	RestartRequired bool          `json:"restartRequired"`
 	RestartFields   []string      `json:"restartFields,omitempty"`
 }
@@ -627,6 +630,7 @@ func (s *Server) settings(w http.ResponseWriter, r *http.Request) {
 		Config:     cfg,
 		ConfigPath: s.configPath,
 		Network:    netinfo.Inspect(cfg.Listen),
+		Version:    AppVersion,
 	})
 }
 
@@ -665,6 +669,7 @@ func (s *Server) saveSettings(w http.ResponseWriter, r *http.Request) {
 		Config:          next,
 		ConfigPath:      s.configPath,
 		Network:         netinfo.Inspect(next.Listen),
+		Version:         AppVersion,
 		RestartRequired: len(restartFields) > 0,
 		RestartFields:   restartFields,
 	})

@@ -22,7 +22,10 @@ import (
 	"easycodex-agent/internal/netinfo"
 	"easycodex-agent/internal/server"
 	"easycodex-agent/internal/wezterm"
+	"easycodex-agent/internal/winproc"
 )
+
+var version = "dev"
 
 func main() {
 	configPath := flag.String("config", "", "config file path")
@@ -70,6 +73,7 @@ func main() {
 
 	cli := wezterm.CLI{Root: cfg.Root, Timeout: cfg.CommandTimeout()}
 	tracker := &trackedWezTerm{cli: cli, logger: logger}
+	server.AppVersion = version
 	app, err := server.NewWithConfigPath(cfg, displayConfigPath, tracker, logger)
 	if err != nil {
 		logger.Error("failed to create server", "error", err)
@@ -83,6 +87,7 @@ func main() {
 	}
 
 	fmt.Println("EasyCodex Agent started")
+	fmt.Printf("Version: %s\n", version)
 	if found {
 		fmt.Printf("Config: %s\n", displayConfigPath)
 	} else {
@@ -169,6 +174,7 @@ func startTrayHelper(logger *slog.Logger, cfg config.Config, configPath string) 
 	cleanupExistingTrayHelpers(logger, scriptPath)
 	pairingURL := netinfo.Inspect(cfg.Listen).LocalURL + "/pairing"
 	cmd := exec.Command("powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-WindowStyle", "Hidden", "-File", scriptPath, "-PairingUrl", pairingURL, "-ConfigPath", configPath, "-AgentPid", strconv.Itoa(os.Getpid()))
+	winproc.HideWindow(cmd)
 	cmd.Stdout = nil
 	cmd.Stderr = nil
 	if err := cmd.Start(); err != nil {
@@ -185,6 +191,7 @@ func cleanupExistingTrayHelpers(logger *slog.Logger, scriptPath string) {
 	escapedPath := strings.ReplaceAll(scriptPath, "'", "''")
 	script := fmt.Sprintf(`$target = '%s'; Get-CimInstance Win32_Process -Filter "Name = 'powershell.exe'" | Where-Object { $_.ProcessId -ne $PID -and $_.CommandLine -like "*$target*" } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }`, escapedPath)
 	cmd := exec.Command("powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", script)
+	winproc.HideWindow(cmd)
 	if err := cmd.Run(); err != nil {
 		logger.Warn("failed to cleanup existing tray helpers", "error", err)
 	}
@@ -287,7 +294,9 @@ func weztermGUIProcessExists(class string) (bool, error) {
 	}
 	escapedClass := strings.ReplaceAll(class, "'", "''")
 	script := fmt.Sprintf(`$class = '%s'; $pattern = '(^|\s)--class\s+' + [regex]::Escape($class) + '($|\s)'; $items = Get-CimInstance Win32_Process -Filter "Name = 'wezterm-gui.exe'" | Where-Object { $_.CommandLine -match $pattern }; if ($items) { 'true' } else { 'false' }`, escapedClass)
-	out, err := exec.Command("powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", script).Output()
+	cmd := exec.Command("powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", script)
+	winproc.HideWindow(cmd)
+	out, err := cmd.Output()
 	if err != nil {
 		return false, err
 	}
