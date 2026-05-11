@@ -596,6 +596,8 @@ func TestTerminalPageIsAvailableRemotely(t *testing.T) {
 		!strings.Contains(body, "return isLocalBrowser() ? 300 : 2000") ||
 		!strings.Contains(body, "function markPaneInput(text)") ||
 		!strings.Contains(body, "recordInput: !!recordInput") ||
+		!strings.Contains(body, "row.onpointerdown = event =>") ||
+		!strings.Contains(body, "if (state.paneId === paneId)") ||
 		!strings.Contains(body, "await sendRaw(text, enter, true)") ||
 		!strings.Contains(body, "sendRaw(value[0], value[1], false)") ||
 		!strings.Contains(body, "refreshPaneList().catch(() => {})") ||

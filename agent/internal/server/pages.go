@@ -808,8 +808,13 @@ function renderPanes(){
     menu.textContent = '...';
     row.appendChild(main);
     row.appendChild(menu);
+    row.onpointerdown = event => {
+      if (event.target.closest && event.target.closest('.pane-menu')) return;
+      selectPane(pane.paneId);
+    };
     row.onclick = event => {
-      if (event.target === menu) showPaneDetails(pane); else selectPane(pane.paneId);
+      if (event.target.closest && event.target.closest('.pane-menu')) showPaneDetails(pane);
+      else selectPane(pane.paneId);
     };
     row.ondblclick = () => showPaneDetails(pane);
     box.appendChild(row);
@@ -820,6 +825,9 @@ function updateDocumentTitle(){
   document.title = state.workingCount > 0 ? '(' + state.workingCount + ' working) ' + baseDocumentTitle : baseDocumentTitle;
 }
 function selectPane(paneId){
+  if (state.paneId === paneId) {
+    return;
+  }
   state.paneId = paneId;
   state.snapshotHash = '';
   state.pollToken++;
