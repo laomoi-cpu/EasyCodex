@@ -27,6 +27,10 @@ func (s *Server) settingsPage(w http.ResponseWriter, r *http.Request) {
 	writeHTML(w, settingsPageHTML())
 }
 
+func (s *Server) terminalPage(w http.ResponseWriter, r *http.Request) {
+	writeHTML(w, terminalPageHTML())
+}
+
 func (s *Server) statusPage(w http.ResponseWriter, r *http.Request) {
 	if !isLocalRequest(r) {
 		writeError(w, http.StatusForbidden, fmt.Errorf("status page is only available from localhost"))
@@ -80,6 +84,7 @@ func (s *Server) statusPage(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) writePairingConsole(w http.ResponseWriter, baseURLs []string) {
 	var cards strings.Builder
+	var browserCards strings.Builder
 	for _, baseURL := range baseURLs {
 		pairURL := baseURL + "/api/mobile-pair?code=" + url.QueryEscape(s.mobilePairCode())
 		deepLink := "easycodex://pair?u=" + url.QueryEscape(pairURL)
@@ -95,6 +100,20 @@ func (s *Server) writePairingConsole(w http.ResponseWriter, baseURLs []string) {
     <code>%s</code>
   </div>
 </article>`, html.EscapeString(qrURL), networkBadge(baseURL), html.EscapeString(baseURL), html.EscapeString(deepLink))
+
+		browserURL := baseURL + "/terminal#baseUrl=" + url.QueryEscape(baseURL) + "&token=" + url.QueryEscape(s.configSnapshot().Token)
+		browserQRURL := "/api/pairing/qr.svg?data=" + url.QueryEscape(browserURL)
+		fmt.Fprintf(&browserCards, `
+<article class="pair-card">
+  <div class="qr-frame"><img src="%s" alt="Browser Terminal QR"></div>
+  <div class="pair-meta">
+    <span class="badge">%s</span>
+    <label>Browser Terminal URL</label>
+    <code>%s</code>
+    <label>Open Link</label>
+    <code>%s</code>
+  </div>
+</article>`, html.EscapeString(browserQRURL), networkBadge(baseURL), html.EscapeString(baseURL+"/terminal"), html.EscapeString(browserURL))
 	}
 
 	body := fmt.Sprintf(`
@@ -106,7 +125,8 @@ func (s *Server) writePairingConsole(w http.ResponseWriter, baseURLs []string) {
   </div>
   <img class="hero-mark" src="/assets/easycodex.svg" alt="">
 </section>
-<section class="pair-grid">%s</section>`, cards.String())
+<section class="panel pair-section"><h2>Android APK</h2><div class="pair-grid">%s</div></section>
+<section class="panel pair-section"><h2>PC / Mobile Browser</h2><div class="pair-grid">%s</div></section>`, cards.String(), browserCards.String())
 	writeHTML(w, pageShell("Pairing", "pairing", body, ""))
 }
 
@@ -140,12 +160,75 @@ func pageShell(title, active, body, script string) string {
 <body>
 <header class="topbar">
   <a class="brand" href="/pairing"><img src="/assets/easycodex.svg" alt=""><span>EasyCodex</span></a>
-  <nav>` + nav("pairing", "/pairing", "Pairing") + nav("settings", "/settings", "Settings") + nav("status", "/status", "Status") + `</nav>
+  <nav>` + nav("terminal", "/terminal", "Terminal") + nav("pairing", "/pairing", "Pairing") + nav("settings", "/settings", "Settings") + nav("status", "/status", "Status") + `</nav>
 </header>
 <main>` + body + `</main>
 ` + script + `
 </body>
 </html>`
+}
+
+func terminalPageHTML() string {
+	body := `
+<section class="terminal-page">
+  <section id="connectPanel" class="panel terminal-connect">
+    <div>
+      <p class="eyebrow">Browser Terminal</p>
+      <h1>Control Codex from any browser.</h1>
+      <p class="lead">Use the same Agent URL and token as the Android app. QR links from Pairing can fill these fields automatically.</p>
+    </div>
+    <form id="connectForm" class="connect-form">
+      <label><span>Agent Base URL</span><input id="baseUrl" autocomplete="off" placeholder="http://192.168.x.x:8765"></label>
+      <label><span>Token</span><input id="browserToken" autocomplete="off" placeholder="easycodex-dev-token"></label>
+      <button type="submit">Connect</button>
+    </form>
+  </section>
+
+  <section id="terminalApp" class="terminal-app" hidden>
+    <aside class="terminal-sidebar">
+      <div class="terminal-toolbar">
+        <button id="newSession" type="button">+</button>
+        <button id="refreshSessions" type="button" class="secondary">Refresh</button>
+      </div>
+      <div id="paneList" class="pane-list"></div>
+    </aside>
+    <section class="terminal-workbench">
+      <div class="terminal-statusbar">
+        <button id="connectionStatus" type="button" class="status-pill">Offline</button>
+        <button id="editConnection" type="button" class="secondary">Settings</button>
+      </div>
+      <pre id="terminalOutput" class="terminal-output">Connect, then select a pane.</pre>
+      <div id="keyPanel" class="key-panel" hidden>
+        <button data-key="enter" type="button">Enter</button>
+        <button data-key="ctrlc" type="button">Ctrl+C</button>
+        <button data-key="shifttab" type="button">S+Tab</button>
+        <button data-key="shiftpgup" type="button">S+PgUp</button>
+        <button data-key="shiftpgdn" type="button">S+PgDn</button>
+        <button data-key="space" type="button">Space</button>
+        <button data-key="up" type="button">Up</button>
+        <button data-key="down" type="button">Down</button>
+        <button data-key="esc" type="button">Esc</button>
+      </div>
+      <form id="sendForm" class="send-row">
+        <input id="commandInput" autocomplete="off" placeholder="Message">
+        <button id="toggleKeys" type="button" class="secondary">⌘</button>
+        <button type="submit">Send</button>
+      </form>
+    </section>
+  </section>
+</section>
+
+<dialog id="paneDialog" class="pane-dialog">
+  <h2 id="dialogTitle">Session</h2>
+  <dl id="dialogDetails" class="kv"></dl>
+  <div class="dialog-actions">
+    <button id="dialogClose" type="button" class="secondary">Close</button>
+    <button id="dialogDelete" type="button" class="danger">Delete</button>
+    <button id="dialogClone" type="button">Clone</button>
+  </div>
+</dialog>`
+	script := `<script>` + terminalJS() + `</script>`
+	return pageShell("Terminal", "terminal", body, script)
 }
 
 func settingsPageHTML() string {
@@ -216,7 +299,347 @@ main{max-width:1180px;margin:0 auto;padding:28px}.hero{display:flex;justify-cont
 .badge{display:inline-flex;align-items:center;height:24px;padding:0 9px;border-radius:999px;background:#e7f4f4;color:#075f63;font-weight:700;font-size:12px}.settings-layout{display:grid;grid-template-columns:1fr 1fr;gap:16px}.settings-layout .panel:nth-child(2),.settings-layout .panel:nth-child(3){grid-column:span 1}.field-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}label span{display:block;color:#344054;font-weight:600;margin-bottom:6px}input,textarea,select{width:100%;border:1px solid #cfd6df;border-radius:7px;padding:10px 11px;background:#fff;color:var(--text);font-size:14px}textarea{resize:vertical}.check-row{display:flex;gap:10px;align-items:center;margin-top:16px}.check-row input{width:auto}.check-row span{margin:0;font-weight:500}
 .panel-title-row{display:flex;align-items:center;justify-content:space-between;gap:12px}.instance-row{display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:10px;align-items:end;margin-top:10px}.choice-list{display:grid;gap:10px}.choice{display:flex;align-items:center;gap:10px;padding:10px;border:1px solid var(--line);border-radius:7px}.choice input{width:auto}.actionbar{grid-column:1/-1;display:flex;justify-content:flex-end;gap:10px;padding:14px 0 4px}
 button{border:0;border-radius:7px;background:var(--accent);color:#fff;font-weight:700;padding:10px 16px;cursor:pointer}button:hover{filter:brightness(.96)}button.secondary{background:#fff;color:#344054;border:1px solid #cfd6df}.remove{background:#fff4ed;color:#b54708;border:1px solid #fed7aa}.status-card{padding:16px;min-width:220px}.status-card.muted{color:var(--muted)}.status-dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:#12b76a;margin-right:8px}.status-card small{display:block;color:var(--muted);margin-top:4px}.kv{display:grid;grid-template-columns:145px minmax(0,1fr);gap:10px;margin:0}.kv dt{color:var(--muted)}.kv dd{margin:0}
-@media(max-width:760px){.topbar{padding:0 14px}.brand span{display:none}main{padding:18px}.hero{display:block}.hero-mark{display:none}.settings-layout,.panel-grid.two{grid-template-columns:1fr}.field-grid{grid-template-columns:1fr}.pair-card{grid-template-columns:1fr}.instance-row{grid-template-columns:1fr}.actionbar{position:sticky;bottom:0;background:var(--bg);padding:12px 0}}`
+.pair-section{margin-top:16px}.pair-section h2{margin-bottom:16px}.terminal-page{display:grid;gap:16px}.terminal-connect{display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:22px;align-items:end}.connect-form{display:grid;gap:12px}.terminal-app{display:grid;grid-template-columns:280px minmax(0,1fr);gap:14px;height:calc(100vh - 122px);min-height:620px}.terminal-sidebar,.terminal-workbench{background:#fff;border:1px solid var(--line);border-radius:8px;box-shadow:var(--shadow);min-height:0}.terminal-sidebar{display:flex;flex-direction:column;padding:12px}.terminal-toolbar{display:grid;grid-template-columns:48px 1fr;gap:8px;margin-bottom:10px}.pane-list{display:grid;gap:8px;overflow:auto}.pane-item{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center;padding:9px;border:1px solid var(--line);border-radius:7px;background:#f8fafc;text-align:left;color:#18212f}.pane-item.active{background:#dbeafe;border-color:#93c5fd}.pane-item.selected{outline:2px solid #2563eb}.pane-main{display:block;min-width:0}.pane-title{display:block;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.pane-meta{display:block;color:var(--muted);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.pane-menu{padding:7px 9px}.terminal-workbench{display:grid;grid-template-rows:auto minmax(0,1fr) auto auto;padding:12px;gap:10px}.terminal-statusbar{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px}.status-pill{background:#e5e7eb;color:#374151;border:1px solid #d1d5db}.status-pill.ok{background:#d1fae5;color:#065f46;border-color:#86efac}.status-pill.work{background:#dbeafe;color:#1d4ed8;border-color:#93c5fd}.status-pill.err{background:#fee2e2;color:#991b1b;border-color:#fca5a5}.terminal-output{margin:0;overflow:auto;background:#0b1220;color:#e6edf3;border-radius:8px;padding:14px;font:13px/1.45 Consolas,"Cascadia Mono",monospace;white-space:pre-wrap;word-break:break-word}.send-row{display:grid;grid-template-columns:minmax(0,1fr) 54px 92px;gap:8px}.send-row input{height:44px}.key-panel{display:grid;grid-template-columns:repeat(9,minmax(0,1fr));gap:6px}.key-panel button{padding:7px 6px;font-size:12px}.pane-dialog{border:1px solid var(--line);border-radius:8px;box-shadow:var(--shadow);max-width:560px;width:calc(100% - 28px);padding:18px}.pane-dialog h2{margin:0 0 14px}.dialog-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:16px}.danger{background:#fee2e2!important;color:#991b1b!important;border:1px solid #fca5a5!important}
+@media(max-width:760px){.topbar{padding:0 14px}.brand span{display:none}nav{gap:2px}nav a{padding:7px 8px;font-size:12px}main{padding:12px}.hero{display:block}.hero-mark{display:none}.settings-layout,.panel-grid.two{grid-template-columns:1fr}.field-grid{grid-template-columns:1fr}.pair-card{grid-template-columns:1fr}.instance-row{grid-template-columns:1fr}.actionbar{position:sticky;bottom:0;background:var(--bg);padding:12px 0}.terminal-connect{grid-template-columns:1fr}.terminal-app{grid-template-columns:1fr;height:calc(100vh - 88px);min-height:0}.terminal-sidebar{max-height:128px;padding:8px}.pane-list{display:flex;overflow:auto}.pane-item{min-width:180px}.terminal-workbench{min-height:0}.terminal-output{font-size:12px;padding:10px}.send-row{grid-template-columns:minmax(0,1fr) 48px 74px}.key-panel{grid-template-columns:repeat(3,minmax(0,1fr))}}`
+}
+
+func terminalJS() string {
+	return `
+const $ = id => document.getElementById(id);
+const store = window.localStorage;
+const ansiColors = [0x0b1220,0xdc2626,0x16a34a,0xd97706,0x2563eb,0xc026d3,0x0891b2,0xe6edf3,0x64748b,0xef4444,0x22c55e,0xf59e0b,0x60a5fa,0xe879f9,0x22d3ee,0xffffff];
+const state = {
+  baseUrl: store.getItem('easycodex.baseUrl') || location.origin,
+  token: store.getItem('easycodex.token') || '',
+  instanceId: 'main',
+  defaults: {instanceId:'main', cwd:'D:\\mgame', command:['cmd.exe','/k','cd /d D:\\mgame && codex --dangerously-bypass-approvals-and-sandbox']},
+  panes: [], paneId: '', snapshotHash: '', pollTimer: 0, pollToken: 0, selectedPane: null
+};
+
+function initFromHash(){
+  if (!location.hash || location.hash.length < 2) return;
+  const params = new URLSearchParams(location.hash.slice(1));
+  const baseUrl = params.get('baseUrl');
+  const token = params.get('token');
+  if (baseUrl) state.baseUrl = trimSlash(baseUrl);
+  if (token) state.token = token;
+  saveConnectionFields();
+  history.replaceState(null, '', location.pathname);
+}
+function trimSlash(value){ return String(value || '').trim().replace(/\/+$/, ''); }
+function saveConnectionFields(){
+  state.baseUrl = trimSlash($('baseUrl').value || state.baseUrl || location.origin);
+  state.token = String($('browserToken').value || state.token || '').trim();
+  store.setItem('easycodex.baseUrl', state.baseUrl);
+  store.setItem('easycodex.token', state.token);
+  $('baseUrl').value = state.baseUrl;
+  $('browserToken').value = state.token;
+}
+function showConnect(show){
+  $('connectPanel').hidden = !show;
+  $('terminalApp').hidden = show;
+}
+function setStatus(text, kind){
+  const button = $('connectionStatus');
+  button.textContent = text;
+  button.className = 'status-pill ' + (kind || '');
+}
+async function api(path, options, auth){
+  options = options || {};
+  const headers = {'Accept':'application/json'};
+  if (auth !== false) headers['Authorization'] = 'Bearer ' + state.token;
+  if (options.body !== undefined) headers['Content-Type'] = 'application/json';
+  const res = await fetch(state.baseUrl + path, {
+    method: options.method || 'GET',
+    headers,
+    body: options.body === undefined ? undefined : JSON.stringify(options.body)
+  });
+  let payload = {};
+  try { payload = await res.json(); } catch (err) { throw new Error('Invalid JSON from Agent'); }
+  if (!res.ok || !payload.ok) throw new Error(payload.error || ('HTTP ' + res.status));
+  return payload.data || {};
+}
+async function connect(){
+  saveConnectionFields();
+  setStatus('Connecting', 'work');
+  await api('/api/health', {}, false);
+  const cfg = await api('/api/config', {}, true);
+  state.defaults = cfg.defaults || state.defaults;
+  state.instanceId = state.defaults.instanceId || 'main';
+  showConnect(false);
+  setStatus('Connected', 'ok');
+  await loadSessions();
+}
+async function loadSessions(){
+  setStatus('Loading sessions', 'work');
+  const data = await api('/api/instances/' + encodeURIComponent(state.instanceId) + '/sessions', {}, true);
+  state.panes = data.panes || [];
+  renderPanes();
+  const current = state.panes.find(p => p.paneId === state.paneId);
+  if (current) {
+    selectPane(current.paneId);
+  } else if (state.panes.length) {
+    selectPane(state.panes[0].paneId);
+  } else {
+    stopPolling();
+    state.paneId = '';
+    $('terminalOutput').textContent = 'No panes available.';
+    setStatus('No panes', '');
+  }
+}
+function renderPanes(){
+  const box = $('paneList');
+  box.innerHTML = '';
+  state.panes.forEach(pane => {
+    const row = document.createElement('button');
+    row.type = 'button';
+    row.className = 'pane-item' + (pane.isActive ? ' active' : '') + (pane.paneId === state.paneId ? ' selected' : '');
+    const main = document.createElement('span');
+    main.className = 'pane-main';
+    const title = document.createElement('span');
+    title.className = 'pane-title';
+    title.textContent = (pane.isActive ? '* ' : '') + pane.paneId + ' ' + safeTitle(pane);
+    const meta = document.createElement('span');
+    meta.className = 'pane-meta';
+    meta.textContent = displayCwd(pane.cwd);
+    main.appendChild(title);
+    main.appendChild(meta);
+    const menu = document.createElement('span');
+    menu.className = 'pane-menu';
+    menu.textContent = '⋯';
+    row.appendChild(main);
+    row.appendChild(menu);
+    row.onclick = event => {
+      if (event.target === menu) showPaneDetails(pane); else selectPane(pane.paneId);
+    };
+    row.ondblclick = () => showPaneDetails(pane);
+    box.appendChild(row);
+  });
+}
+function selectPane(paneId){
+  state.paneId = paneId;
+  state.snapshotHash = '';
+  state.pollToken++;
+  renderPanes();
+  $('terminalOutput').textContent = 'Loading pane ' + paneId + '...';
+  pollSnapshot(state.pollToken);
+}
+async function pollSnapshot(token){
+  if (token !== state.pollToken || !state.paneId) return;
+  let path = '/api/instances/' + encodeURIComponent(state.instanceId) + '/panes/' + encodeURIComponent(state.paneId) + '/snapshot?lines=180&escapes=1';
+  if (state.snapshotHash) path += '&since=' + encodeURIComponent(state.snapshotHash);
+  try {
+    const data = await api(path, {}, true);
+    if (token !== state.pollToken) return;
+    state.snapshotHash = data.hash || state.snapshotHash;
+    if (data.changed) renderTerminal(data.text || '');
+    setStatus('Connected', 'ok');
+    state.pollTimer = setTimeout(() => pollSnapshot(token), 1000);
+  } catch (err) {
+    setStatus('Snapshot failed: ' + err.message, 'err');
+    state.pollTimer = setTimeout(() => pollSnapshot(token), 3000);
+  }
+}
+function stopPolling(){
+  state.pollToken++;
+  if (state.pollTimer) clearTimeout(state.pollTimer);
+  state.pollTimer = 0;
+}
+async function sendCommand(enter){
+  const input = $('commandInput');
+  const text = input.value;
+  if (!state.paneId) { setStatus('Select a pane first', 'err'); return; }
+  if (!text && !enter) return;
+  await sendRaw(text, enter);
+  if (enter) input.value = '';
+}
+async function sendRaw(text, enter){
+  if (!state.paneId) { setStatus('Select a pane first', 'err'); return; }
+  setStatus('Sending', 'work');
+  const body = {textBase64: utf8Base64(text || ''), noPaste: true, enter: !!enter};
+  await api('/api/instances/' + encodeURIComponent(state.instanceId) + '/panes/' + encodeURIComponent(state.paneId) + '/send', {method:'POST', body}, true);
+  state.snapshotHash = '';
+  pollSnapshot(state.pollToken);
+  setStatus('Sent', 'ok');
+}
+async function spawnSession(cwd){
+  setStatus('Starting Codex', 'work');
+  const body = {cwd: cwd || state.defaults.cwd, command: state.defaults.command || []};
+  const data = await api('/api/instances/' + encodeURIComponent(state.instanceId) + '/spawn', {method:'POST', body}, true);
+  await loadSessions();
+  if (data.paneId) selectPane(data.paneId);
+}
+async function deletePane(pane){
+  if (!confirm('Delete pane ' + pane.paneId + '?')) return;
+  setStatus('Deleting pane ' + pane.paneId, 'work');
+  await api('/api/instances/' + encodeURIComponent(state.instanceId) + '/panes/' + encodeURIComponent(pane.paneId), {method:'DELETE'}, true);
+  if (pane.paneId === state.paneId) {
+    stopPolling();
+    state.paneId = '';
+    $('terminalOutput').textContent = 'Pane ' + pane.paneId + ' deleted.';
+  }
+  await loadSessions();
+}
+function showPaneDetails(pane){
+  state.selectedPane = pane;
+  $('dialogTitle').textContent = 'Session ' + pane.paneId;
+  const details = $('dialogDetails');
+  details.innerHTML = '';
+  addDetail(details, 'Title', safeTitle(pane));
+  addDetail(details, 'Pane', pane.paneId);
+  addDetail(details, 'Window / Tab', (pane.windowId || 0) + ' / ' + (pane.tabId || 0));
+  addDetail(details, 'Workspace', pane.workspace || '-');
+  addDetail(details, 'Working directory', displayCwd(pane.cwd));
+  addDetail(details, 'Active', pane.isActive ? 'Yes' : 'No');
+  $('paneDialog').showModal();
+}
+function addDetail(box, name, value){
+  const dt = document.createElement('dt');
+  dt.textContent = name;
+  const dd = document.createElement('dd');
+  dd.textContent = value || '-';
+  box.appendChild(dt);
+  box.appendChild(dd);
+}
+function safeTitle(pane){ return pane.title || pane.cwd || ''; }
+function displayCwd(cwd){
+  const value = spawnCwdFromValue(cwd);
+  return value || '-';
+}
+function spawnCwdFromValue(cwd){
+  if (!cwd) return '';
+  if (!cwd.startsWith('file:')) return cwd;
+  try {
+    let path = decodeURIComponent(new URL(cwd).pathname || '');
+    if (path.length >= 3 && path[0] === '/' && path[2] === ':') path = path.slice(1);
+    return path.replace(/\//g, '\\');
+  } catch (err) {
+    return cwd;
+  }
+}
+function utf8Base64(text){
+  const bytes = new TextEncoder().encode(text);
+  let binary = '';
+  bytes.forEach(byte => binary += String.fromCharCode(byte));
+  return btoa(binary);
+}
+function renderTerminal(text){
+  const output = $('terminalOutput');
+  output.innerHTML = ansiToHTML(text);
+  output.scrollTop = output.scrollHeight;
+}
+function ansiToHTML(text){
+  let html = '', fg = '', bg = '', start = 0, index = 0;
+  while (index < text.length) {
+    if (text.charCodeAt(index) === 27) {
+      const end = ansiSequenceEnd(text, index);
+      if (end > index) {
+        html += styledRun(text.slice(start, index), fg, bg);
+        if (isSgr(text, index, end)) {
+          const next = applySgr(text.slice(index + 2, end - 1), fg, bg);
+          fg = next.fg; bg = next.bg;
+        }
+        index = end; start = index; continue;
+      }
+    }
+    index++;
+  }
+  html += styledRun(text.slice(start), fg, bg);
+  return html;
+}
+function styledRun(text, fg, bg){
+  if (!text) return '';
+  let style = '';
+  if (fg) style += 'color:' + fg + ';';
+  if (bg) style += 'background-color:' + bg + ';';
+  const safe = escapeHtml(text);
+  return style ? '<span style="' + style + '">' + safe + '</span>' : safe;
+}
+function ansiSequenceEnd(text, esc){
+  if (esc + 1 >= text.length) return -1;
+  const next = text[esc + 1];
+  if (next === '[') {
+    for (let i = esc + 2; i < text.length; i++) {
+      const code = text.charCodeAt(i);
+      if (code >= 64 && code <= 126) return i + 1;
+    }
+    return text.length;
+  }
+  if (next === ']' || next === 'P' || next === '_' || next === '^' || next === 'X') return stringControlEnd(text, esc + 2);
+  if ('()*+-./#'.includes(next)) return Math.min(text.length, esc + 3);
+  return Math.min(text.length, esc + 2);
+}
+function stringControlEnd(text, start){
+  for (let i = start; i < text.length; i++) {
+    if (text.charCodeAt(i) === 7) return i + 1;
+    if (text.charCodeAt(i) === 27 && i + 1 < text.length && text[i + 1] === '\\') return i + 2;
+  }
+  return text.length;
+}
+function isSgr(text, esc, end){ return esc + 2 < end && text[esc + 1] === '[' && text[end - 1] === 'm'; }
+function applySgr(params, fg, bg){
+  const codes = params.replace(/:/g, ';').split(';').map(x => x.trim()).filter(Boolean).map(x => parseInt(x, 10) || 0);
+  if (!codes.length) return {fg:'', bg:''};
+  for (let i = 0; i < codes.length; i++) {
+    const code = codes[i];
+    if (code === 0) { fg = ''; bg = ''; }
+    else if (code === 39) fg = '';
+    else if (code === 49) bg = '';
+    else if (code >= 30 && code <= 37) fg = ansiColor(code - 30);
+    else if (code >= 40 && code <= 47) bg = ansiColor(code - 40);
+    else if (code >= 90 && code <= 97) fg = ansiColor(code - 90 + 8);
+    else if (code >= 100 && code <= 107) bg = ansiColor(code - 100 + 8);
+    else if ((code === 38 || code === 48) && i + 2 < codes.length) {
+      const isFg = code === 38;
+      const mode = codes[++i];
+      let color = '';
+      if (mode === 5 && i + 1 < codes.length) color = xtermColor(codes[++i]);
+      else if (mode === 2 && i + 3 < codes.length) color = rgb(codes[++i], codes[++i], codes[++i]);
+      if (isFg) fg = color; else bg = color;
+    }
+  }
+  return {fg, bg};
+}
+function ansiColor(index){ return index >= 0 && index < ansiColors.length ? '#' + ansiColors[index].toString(16).padStart(6, '0') : ''; }
+function xtermColor(index){
+  if (index >= 0 && index < 16) return ansiColor(index);
+  if (index >= 16 && index <= 231) {
+    const v = index - 16, r = Math.floor(v / 36), g = Math.floor(v / 6) % 6, b = v % 6;
+    return rgb(channel(r), channel(g), channel(b));
+  }
+  if (index >= 232 && index <= 255) {
+    const level = 8 + (index - 232) * 10;
+    return rgb(level, level, level);
+  }
+  return '';
+}
+function channel(v){ return v === 0 ? 0 : 55 + v * 40; }
+function rgb(r,g,b){ return 'rgb(' + clamp(r) + ',' + clamp(g) + ',' + clamp(b) + ')'; }
+function clamp(v){ return Math.max(0, Math.min(255, v | 0)); }
+function escapeHtml(value){ return String(value).replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch])); }
+
+initFromHash();
+$('baseUrl').value = state.baseUrl;
+$('browserToken').value = state.token;
+showConnect(!state.token);
+$('connectForm').addEventListener('submit', event => { event.preventDefault(); connect().catch(err => setStatus(err.message, 'err')); });
+$('connectionStatus').onclick = () => connect().catch(err => setStatus(err.message, 'err'));
+$('editConnection').onclick = () => { stopPolling(); showConnect(true); };
+$('refreshSessions').onclick = () => loadSessions().catch(err => setStatus(err.message, 'err'));
+$('newSession').onclick = () => spawnSession().catch(err => setStatus(err.message, 'err'));
+$('sendForm').addEventListener('submit', event => { event.preventDefault(); sendCommand(true).catch(err => setStatus(err.message, 'err')); });
+$('toggleKeys').onclick = () => $('keyPanel').hidden = !$('keyPanel').hidden;
+document.querySelectorAll('[data-key]').forEach(button => button.onclick = () => {
+  const key = button.dataset.key;
+  const map = {enter:['',true], ctrlc:['\u0003',false], shifttab:['\u001B[Z',false], shiftpgup:['\u001B[5;2~',false], shiftpgdn:['\u001B[6;2~',false], space:[' ',false], up:['\u001B[A',false], down:['\u001B[B',false], esc:['\u001B',false]};
+  const value = map[key];
+  sendRaw(value[0], value[1]).catch(err => setStatus(err.message, 'err'));
+});
+$('dialogClose').onclick = () => $('paneDialog').close();
+$('dialogDelete').onclick = () => { const pane = state.selectedPane; $('paneDialog').close(); if (pane) deletePane(pane).catch(err => setStatus(err.message, 'err')); };
+$('dialogClone').onclick = () => { const pane = state.selectedPane; $('paneDialog').close(); if (pane) spawnSession(displayCwd(pane.cwd) === '-' ? state.defaults.cwd : displayCwd(pane.cwd)).catch(err => setStatus(err.message, 'err')); };
+if (state.token) connect().catch(err => { showConnect(true); setStatus(err.message, 'err'); });
+`
 }
 
 func settingsJS() string {

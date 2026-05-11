@@ -185,6 +185,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /", s.homePage)
 	mux.HandleFunc("GET /status", s.statusPage)
 	mux.HandleFunc("GET /settings", s.settingsPage)
+	mux.HandleFunc("GET /terminal", s.terminalPage)
 	mux.HandleFunc("GET /assets/easycodex.svg", s.easycodexIcon)
 	mux.HandleFunc("GET /api/health", s.health)
 	mux.HandleFunc("GET /api/pairing", s.pairing)

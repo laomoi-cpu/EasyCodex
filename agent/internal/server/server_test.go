@@ -270,6 +270,26 @@ func TestPairingPageIncludesPublicBaseURL(t *testing.T) {
 	if !strings.Contains(body, "http://100.64.1.2:8765") || !strings.Contains(body, "Public") {
 		t.Fatalf("expected public pairing card: %s", body)
 	}
+	if !strings.Contains(body, "/terminal#baseUrl=") || !strings.Contains(body, "PC / Mobile Browser") {
+		t.Fatalf("expected browser terminal pairing card: %s", body)
+	}
+}
+
+func TestTerminalPageIsAvailableRemotely(t *testing.T) {
+	srv, _ := testServer(t)
+	req := httptest.NewRequest(http.MethodGet, "/terminal", nil)
+	req.RemoteAddr = "192.168.1.20:12345"
+	rec := httptest.NewRecorder()
+
+	srv.Handler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d body = %s", rec.Code, rec.Body.String())
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, "Browser Terminal") || !strings.Contains(body, "terminalApp") || !strings.Contains(body, "snapshot?lines=180&escapes=1") {
+		t.Fatalf("unexpected terminal page: %s", body)
+	}
 }
 
 func TestInstancesRequiresAuth(t *testing.T) {
