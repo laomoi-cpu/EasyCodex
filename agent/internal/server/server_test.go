@@ -307,6 +307,15 @@ func TestSettingsIncludesVersion(t *testing.T) {
 	}
 }
 
+func TestMachinePageTitleIncludesHostPrefix(t *testing.T) {
+	if got := machinePageTitle("DEV-PC", "Settings"); got != "DEV-PC - EasyCodex Settings" {
+		t.Fatalf("title = %q", got)
+	}
+	if got := machinePageTitle("", "Status"); got != "EasyCodex Status" {
+		t.Fatalf("fallback title = %q", got)
+	}
+}
+
 func TestUpdateCheckReportsNewRelease(t *testing.T) {
 	previousVersion := AppVersion
 	AppVersion = "0.0.7"

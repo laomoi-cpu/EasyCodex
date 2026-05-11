@@ -5,6 +5,7 @@ import (
 	"html"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"time"
 
@@ -174,7 +175,7 @@ func pageShell(title, active, body, script string) string {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>EasyCodex ` + html.EscapeString(title) + `</title>
+<title>` + html.EscapeString(machinePageTitle(localMachineName(), title)) + `</title>
 <link rel="icon" href="/assets/easycodex.svg">
 <style>` + consoleCSS() + `</style>
 </head>
@@ -187,6 +188,27 @@ func pageShell(title, active, body, script string) string {
 ` + script + `
 </body>
 </html>`
+}
+
+func machinePageTitle(machineName, pageTitle string) string {
+	appTitle := "EasyCodex"
+	machineName = strings.TrimSpace(machineName)
+	if machineName != "" {
+		appTitle = machineName + " - " + appTitle
+	}
+	pageTitle = strings.TrimSpace(pageTitle)
+	if pageTitle != "" {
+		return appTitle + " " + pageTitle
+	}
+	return appTitle
+}
+
+func localMachineName() string {
+	name, err := os.Hostname()
+	if err != nil {
+		return ""
+	}
+	return name
 }
 
 func connectionsPageHTML() string {
