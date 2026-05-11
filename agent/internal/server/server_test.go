@@ -575,6 +575,7 @@ func TestTerminalPageIsAvailableRemotely(t *testing.T) {
 		!strings.Contains(body, ".page-terminal .terminal-output{min-height:62dvh") ||
 		!strings.Contains(body, ".page-terminal .send-row{position:sticky") ||
 		!strings.Contains(body, ".key-panel[hidden]{display:none!important}") ||
+		!strings.Contains(body, ".page-terminal .terminal-app[hidden],.page-terminal .terminal-connect[hidden]{display:none!important}") ||
 		!strings.Contains(body, ".page-terminal .terminal-sidebar{border:0;border-radius:0;box-shadow:none;max-height:none;min-height:0;padding:6px;background:#f8fafc;display:grid;grid-template-columns:auto minmax(0,1fr)") ||
 		!strings.Contains(body, ".page-terminal .pane-list{display:flex;gap:5px;min-width:0;overflow-x:auto;overflow-y:hidden") ||
 		!strings.Contains(body, ".page-terminal #newSession{width:32px") ||
