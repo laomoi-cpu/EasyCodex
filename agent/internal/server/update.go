@@ -21,6 +21,9 @@ import (
 
 var githubLatestReleaseURL = "https://api.github.com/repos/laomoi-cpu/EasyCodex/releases/latest"
 var updateHTTPClient = &http.Client{Timeout: 45 * time.Second}
+var updateDownloadHTTPClient = &http.Client{Timeout: 10 * time.Minute}
+
+const updateDownloadAttempts = 3
 
 type updateCheckResponse struct {
 	CurrentVersion string `json:"currentVersion"`
@@ -212,7 +215,7 @@ func (s *Server) setUpdateJobStatus(mutator func(*updateJobStatus)) {
 }
 
 func (s *Server) runUpdateJob() {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), 12*time.Minute)
 	defer cancel()
 
 	s.setUpdateJobStatus(func(job *updateJobStatus) {
@@ -346,40 +349,97 @@ func downloadFile(ctx context.Context, url, dst string, progress func(written, t
 	if strings.TrimSpace(url) == "" {
 		return errors.New("download URL is empty")
 	}
+	tmp := dst + ".tmp"
+	var lastErr error
+	for attempt := 1; attempt <= updateDownloadAttempts; attempt++ {
+		if err := downloadFileAttempt(ctx, url, tmp, progress); err != nil {
+			lastErr = err
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+			if attempt < updateDownloadAttempts {
+				if err := sleepWithContext(ctx, time.Duration(attempt)*time.Second); err != nil {
+					return err
+				}
+			}
+			continue
+		}
+		return os.Rename(tmp, dst)
+	}
+	return fmt.Errorf("download failed after %d attempts: %w", updateDownloadAttempts, lastErr)
+}
+
+func downloadFileAttempt(ctx context.Context, url, tmp string, progress func(written, total int64)) error {
+	existing := int64(0)
+	if stat, err := os.Stat(tmp); err == nil {
+		existing = stat.Size()
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return err
 	}
 	req.Header.Set("User-Agent", "EasyCodex-Agent")
-	res, err := updateHTTPClient.Do(req)
+	if existing > 0 {
+		req.Header.Set("Range", fmt.Sprintf("bytes=%d-", existing))
+	}
+	res, err := updateDownloadHTTPClient.Do(req)
 	if err != nil {
 		return err
 	}
 	defer res.Body.Close()
+	if res.StatusCode == http.StatusRequestedRangeNotSatisfiable && existing > 0 {
+		_ = os.Remove(tmp)
+		return fmt.Errorf("download resume range was rejected: %s", res.Status)
+	}
 	if res.StatusCode < 200 || res.StatusCode >= 300 {
 		return fmt.Errorf("download failed: %s", res.Status)
 	}
-	tmp := dst + ".tmp"
-	out, err := os.Create(tmp)
+
+	appendToFile := existing > 0 && res.StatusCode == http.StatusPartialContent
+	if existing > 0 && !appendToFile {
+		existing = 0
+	}
+	flags := os.O_CREATE | os.O_WRONLY
+	if appendToFile {
+		flags |= os.O_APPEND
+	} else {
+		flags |= os.O_TRUNC
+	}
+	out, err := os.OpenFile(tmp, flags, 0644)
 	if err != nil {
 		return err
 	}
 	total := res.ContentLength
-	if progress != nil {
-		progress(0, total)
+	if appendToFile && total >= 0 {
+		total += existing
 	}
-	reader := &progressReader{reader: res.Body, total: total, progress: progress}
+	if total < 0 {
+		total = 0
+	}
+	if progress != nil {
+		progress(existing, total)
+	}
+	reader := &progressReader{reader: res.Body, written: existing, total: total, progress: progress}
 	_, copyErr := io.Copy(out, reader)
 	closeErr := out.Close()
 	if copyErr != nil {
-		_ = os.Remove(tmp)
 		return copyErr
 	}
 	if closeErr != nil {
-		_ = os.Remove(tmp)
 		return closeErr
 	}
-	return os.Rename(tmp, dst)
+	return nil
+}
+
+func sleepWithContext(ctx context.Context, delay time.Duration) error {
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
 }
 
 type progressReader struct {

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -372,6 +373,82 @@ func TestUpdateCheckIsLocalOnly(t *testing.T) {
 
 	if rec.Code != http.StatusForbidden {
 		t.Fatalf("status = %d body = %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestDownloadFileResumesPartialFile(t *testing.T) {
+	tmpDir := t.TempDir()
+	dst := filepath.Join(tmpDir, "EasyCodex.patch.zip")
+	if err := os.WriteFile(dst+".tmp", []byte("hello "), 0644); err != nil {
+		t.Fatal(err)
+	}
+	var finalWritten int64
+	var finalTotal int64
+	downloadServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Range") != "bytes=6-" {
+			t.Fatalf("Range = %q", r.Header.Get("Range"))
+		}
+		w.Header().Set("Content-Range", "bytes 6-10/11")
+		w.Header().Set("Content-Length", "5")
+		w.WriteHeader(http.StatusPartialContent)
+		_, _ = w.Write([]byte("world"))
+	}))
+	defer downloadServer.Close()
+	previousClient := updateDownloadHTTPClient
+	updateDownloadHTTPClient = downloadServer.Client()
+	t.Cleanup(func() { updateDownloadHTTPClient = previousClient })
+
+	err := downloadFile(context.Background(), downloadServer.URL, dst, func(written, total int64) {
+		finalWritten = written
+		finalTotal = total
+	})
+
+	if err != nil {
+		t.Fatal(err)
+	}
+	content, err := os.ReadFile(dst)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(content) != "hello world" {
+		t.Fatalf("content = %q", content)
+	}
+	if _, err := os.Stat(dst + ".tmp"); !os.IsNotExist(err) {
+		t.Fatalf("temporary file should be renamed, stat err = %v", err)
+	}
+	if finalWritten != 11 || finalTotal != 11 {
+		t.Fatalf("progress = %d/%d", finalWritten, finalTotal)
+	}
+}
+
+func TestDownloadFileRetriesAfterServerError(t *testing.T) {
+	tmpDir := t.TempDir()
+	dst := filepath.Join(tmpDir, "EasyCodex.patch.zip")
+	attempts := 0
+	downloadServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts++
+		if attempts == 1 {
+			http.Error(w, "temporary failure", http.StatusBadGateway)
+			return
+		}
+		_, _ = w.Write([]byte("ok"))
+	}))
+	defer downloadServer.Close()
+	previousClient := updateDownloadHTTPClient
+	updateDownloadHTTPClient = downloadServer.Client()
+	t.Cleanup(func() { updateDownloadHTTPClient = previousClient })
+
+	err := downloadFile(context.Background(), downloadServer.URL, dst, nil)
+
+	if err != nil {
+		t.Fatal(err)
+	}
+	content, err := os.ReadFile(dst)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(content) != "ok" || attempts != 2 {
+		t.Fatalf("content=%q attempts=%d", content, attempts)
 	}
 }
 
