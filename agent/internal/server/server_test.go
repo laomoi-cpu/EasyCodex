@@ -587,6 +587,8 @@ func TestTerminalPageIsAvailableRemotely(t *testing.T) {
 		!strings.Contains(body, "function fitTerminalFont()") ||
 		!strings.Contains(body, "function markPaneInput(text)") ||
 		!strings.Contains(body, "refreshPaneList().catch(() => {})") ||
+		!strings.Contains(body, "function terminalShortcutFromEvent(event)") ||
+		!strings.Contains(body, "document.addEventListener('keydown'") ||
 		!strings.Contains(body, "function setKeyPanel(show)") ||
 		!strings.Contains(body, "$('toggleKeys').onclick = () => setKeyPanel($('keyPanel').hidden)") ||
 		!strings.Contains(body, "snapshot?lines=180&escapes=1") {

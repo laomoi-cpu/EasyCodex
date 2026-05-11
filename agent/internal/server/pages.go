@@ -1041,11 +1041,51 @@ function setKeyPanel(show){
   $('keyPanel').hidden = !show;
   $('toggleKeys').textContent = show ? i18n.hide : i18n.keys;
 }
-document.querySelectorAll('[data-key]').forEach(button => button.onclick = () => {
-  const key = button.dataset.key;
-  const map = {enter:['',true], ctrlc:['\u0003',false], shifttab:['\u001B[Z',false], shiftpgup:['\u001B[5;2~',false], shiftpgdn:['\u001B[6;2~',false], space:[' ',false], up:['\u001B[A',false], down:['\u001B[B',false], esc:['\u001B',false]};
-  const value = map[key];
+const specialKeyMap = {enter:['',true], ctrlc:['\u0003',false], tab:['\t',false], shifttab:['\u001B[Z',false], shiftpgup:['\u001B[5;2~',false], shiftpgdn:['\u001B[6;2~',false], space:[' ',false], up:['\u001B[A',false], down:['\u001B[B',false], left:['\u001B[D',false], right:['\u001B[C',false], pgup:['\u001B[5~',false], pgdn:['\u001B[6~',false], home:['\u001B[H',false], end:['\u001B[F',false], insert:['\u001B[2~',false], delete:['\u001B[3~',false], backspace:['\u007f',false], esc:['\u001B',false]};
+function sendSpecialKey(name){
+  const value = specialKeyMap[name];
+  if (!value) return false;
   sendRaw(value[0], value[1]).catch(err => setStatus(err.message, 'err'));
+  return true;
+}
+document.querySelectorAll('[data-key]').forEach(button => button.onclick = () => {
+  sendSpecialKey(button.dataset.key);
+});
+function terminalShortcutFromEvent(event){
+  if (event.defaultPrevented || event.isComposing) return '';
+  if (!captureTerminalKeys(event.target)) return '';
+  if (event.ctrlKey && !event.altKey && !event.metaKey && !event.shiftKey && String(event.key).toLowerCase() === 'c') return 'ctrlc';
+  if (event.ctrlKey || event.altKey || event.metaKey) return '';
+  if (event.key === 'Enter') return 'enter';
+  if (event.key === 'Escape') return 'esc';
+  if (event.key === 'Tab') return event.shiftKey ? 'shifttab' : 'tab';
+  if (event.key === ' ') return 'space';
+  if (event.key === 'ArrowUp') return 'up';
+  if (event.key === 'ArrowDown') return 'down';
+  if (event.key === 'ArrowLeft') return 'left';
+  if (event.key === 'ArrowRight') return 'right';
+  if (event.key === 'PageUp') return event.shiftKey ? 'shiftpgup' : 'pgup';
+  if (event.key === 'PageDown') return event.shiftKey ? 'shiftpgdn' : 'pgdn';
+  if (event.key === 'Home') return 'home';
+  if (event.key === 'End') return 'end';
+  if (event.key === 'Insert') return 'insert';
+  if (event.key === 'Delete') return 'delete';
+  if (event.key === 'Backspace') return 'backspace';
+  return '';
+}
+function captureTerminalKeys(target){
+  if ($('terminalApp').hidden || $('connectPanel').hidden === false) return false;
+  if (document.querySelector('dialog[open]')) return false;
+  if (!target) return true;
+  if (target.isContentEditable) return false;
+  const tag = String(target.tagName || '').toLowerCase();
+  return !['input','textarea','select','button'].includes(tag);
+}
+document.addEventListener('keydown', event => {
+  const key = terminalShortcutFromEvent(event);
+  if (!key) return;
+  event.preventDefault();
+  sendSpecialKey(key);
 });
 $('dialogClose').onclick = () => $('paneDialog').close();
 $('dialogDelete').onclick = () => { const pane = state.selectedPane; $('paneDialog').close(); if (pane) deletePane(pane).catch(err => setStatus(err.message, 'err')); };
