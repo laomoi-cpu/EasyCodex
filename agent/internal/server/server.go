@@ -132,6 +132,7 @@ type sendTextRequest struct {
 	NoPaste          bool   `json:"noPaste"`
 	Enter            bool   `json:"enter"`
 	EnterDelayMillis int    `json:"enterDelayMillis"`
+	RecordInput      *bool  `json:"recordInput,omitempty"`
 }
 
 type weztermPane struct {
@@ -522,7 +523,9 @@ func (s *Server) sendText(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusBadGateway, err)
 			return
 		}
-		s.recordPaneInput(instance.ID, paneID, text)
+		if shouldRecordPaneInput(text, body.RecordInput) {
+			s.recordPaneInput(instance.ID, paneID, text)
+		}
 	}
 	if body.Enter {
 		if text != "" {
@@ -648,6 +651,22 @@ func (s *Server) attachPaneInputs(instanceID string, tree *sessionTree) {
 
 func paneInputKey(instanceID, paneID string) string {
 	return instanceID + "\x00" + paneID
+}
+
+func shouldRecordPaneInput(text string, explicit *bool) bool {
+	if explicit != nil {
+		return *explicit && summarizePaneInput(text, 20) != ""
+	}
+	return summarizePaneInput(text, 20) != "" && !containsTerminalControl(text)
+}
+
+func containsTerminalControl(text string) bool {
+	for _, r := range text {
+		if r < 32 || r == 127 {
+			return true
+		}
+	}
+	return false
 }
 
 func summarizePaneInput(text string, limit int) string {

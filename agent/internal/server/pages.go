@@ -860,7 +860,7 @@ async function sendCommand(enter){
 async function sendRaw(text, enter, recordInput){
   if (!state.paneId) { setStatus(i18n.selectPaneFirst, 'err'); return; }
   setStatus(i18n.sending, 'work');
-  const body = {textBase64: utf8Base64(text || ''), noPaste: true, enter: !!enter};
+  const body = {textBase64: utf8Base64(text || ''), noPaste: true, enter: !!enter, recordInput: !!recordInput};
   await api('/api/instances/' + encodeURIComponent(state.instanceId) + '/panes/' + encodeURIComponent(state.paneId) + '/send', {method:'POST', body}, true);
   if (recordInput) markPaneInput(text);
   state.snapshotHash = '';

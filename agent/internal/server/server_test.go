@@ -595,6 +595,7 @@ func TestTerminalPageIsAvailableRemotely(t *testing.T) {
 		!strings.Contains(body, "return isLocalBrowser() ? 300 : 1000") ||
 		!strings.Contains(body, "return isLocalBrowser() ? 300 : 2000") ||
 		!strings.Contains(body, "function markPaneInput(text)") ||
+		!strings.Contains(body, "recordInput: !!recordInput") ||
 		!strings.Contains(body, "await sendRaw(text, enter, true)") ||
 		!strings.Contains(body, "sendRaw(value[0], value[1], false)") ||
 		!strings.Contains(body, "refreshPaneList().catch(() => {})") ||
@@ -947,6 +948,78 @@ func TestSessionsIncludeLastInputSummary(t *testing.T) {
 	}
 	if payload.Data.Panes[0].LastInput != "12345678901234567890..." || payload.Data.Panes[0].LastInputAt == "" {
 		t.Fatalf("unexpected last input: %#v", payload.Data.Panes[0])
+	}
+}
+
+func TestSendTextRecordInputFalseSkipsLastInput(t *testing.T) {
+	srv, _ := testServer(t)
+	body := bytes.NewBufferString(`{"text":"manual shortcut","noPaste":true,"recordInput":false}`)
+	sendReq := httptest.NewRequest(http.MethodPost, "/api/instances/main/panes/3/send", body)
+	sendReq.Header.Set("Authorization", "Bearer secret")
+	sendRec := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(sendRec, sendReq)
+	if sendRec.Code != http.StatusOK {
+		t.Fatalf("send status = %d body = %s", sendRec.Code, sendRec.Body.String())
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/instances/main/sessions", nil)
+	req.Header.Set("Authorization", "Bearer secret")
+	rec := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("sessions status = %d body = %s", rec.Code, rec.Body.String())
+	}
+	var payload struct {
+		OK   bool `json:"ok"`
+		Data struct {
+			Panes []paneSession `json:"panes"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatal(err)
+	}
+	if !payload.OK || len(payload.Data.Panes) == 0 {
+		t.Fatalf("unexpected sessions payload: %#v", payload)
+	}
+	if payload.Data.Panes[0].LastInput != "" || payload.Data.Panes[0].LastInputAt != "" {
+		t.Fatalf("shortcut input should not be recorded: %#v", payload.Data.Panes[0])
+	}
+}
+
+func TestSendTextControlSequenceDoesNotRecordByDefault(t *testing.T) {
+	srv, _ := testServer(t)
+	body := bytes.NewBufferString(`{"text":"\u001b[A","noPaste":true}`)
+	sendReq := httptest.NewRequest(http.MethodPost, "/api/instances/main/panes/3/send", body)
+	sendReq.Header.Set("Authorization", "Bearer secret")
+	sendRec := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(sendRec, sendReq)
+	if sendRec.Code != http.StatusOK {
+		t.Fatalf("send status = %d body = %s", sendRec.Code, sendRec.Body.String())
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/instances/main/sessions", nil)
+	req.Header.Set("Authorization", "Bearer secret")
+	rec := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("sessions status = %d body = %s", rec.Code, rec.Body.String())
+	}
+	var payload struct {
+		OK   bool `json:"ok"`
+		Data struct {
+			Panes []paneSession `json:"panes"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatal(err)
+	}
+	if !payload.OK || len(payload.Data.Panes) == 0 {
+		t.Fatalf("unexpected sessions payload: %#v", payload)
+	}
+	if payload.Data.Panes[0].LastInput != "" || payload.Data.Panes[0].LastInputAt != "" {
+		t.Fatalf("control sequence should not be recorded: %#v", payload.Data.Panes[0])
 	}
 }
 
