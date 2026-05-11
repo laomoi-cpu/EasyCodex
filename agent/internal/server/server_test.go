@@ -297,6 +297,8 @@ func TestSettingsIncludesVersion(t *testing.T) {
 		!strings.Contains(body, "/api/update/check") ||
 		!strings.Contains(body, "/api/update/apply") ||
 		!strings.Contains(body, "/api/update/status") ||
+		!strings.Contains(body, `id="useGitHubProxy" type="checkbox" checked`) ||
+		!strings.Contains(body, "useGitHubProxy:$('useGitHubProxy').checked") ||
 		!strings.Contains(body, `id="updateProgressBar"`) {
 		t.Fatalf("expected update controls in settings page: %s", body)
 	}
@@ -313,6 +315,20 @@ func TestMachinePageTitleIncludesHostPrefix(t *testing.T) {
 	}
 	if got := machinePageTitle("", "Status"); got != "EasyCodex Status" {
 		t.Fatalf("fallback title = %q", got)
+	}
+}
+
+func TestGitHubProxyURL(t *testing.T) {
+	raw := "https://github.com/laomoi-cpu/EasyCodex/releases/download/v0.0.14/EasyCodex-0.0.14.patch.zip"
+	want := "https://gh-proxy.org/" + raw
+	if got := githubProxyURL(raw); got != want {
+		t.Fatalf("proxy url = %q", got)
+	}
+	if got := githubProxyURL(want); got != want {
+		t.Fatalf("already proxied url = %q", got)
+	}
+	if got := githubProxyURL("EasyCodex-0.0.14.patch.zip"); got != "EasyCodex-0.0.14.patch.zip" {
+		t.Fatalf("relative url = %q", got)
 	}
 }
 

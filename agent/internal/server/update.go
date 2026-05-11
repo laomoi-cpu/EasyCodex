@@ -24,6 +24,7 @@ var updateHTTPClient = &http.Client{Timeout: 45 * time.Second}
 var updateDownloadHTTPClient = &http.Client{Timeout: 10 * time.Minute}
 
 const updateDownloadAttempts = 3
+const githubProxyPrefix = "https://gh-proxy.org/"
 
 type updateCheckResponse struct {
 	CurrentVersion string `json:"currentVersion"`
@@ -44,6 +45,10 @@ type updateApplyResponse struct {
 	CurrentVersion string `json:"currentVersion"`
 	LatestVersion  string `json:"latestVersion"`
 	Message        string `json:"message"`
+}
+
+type updateApplyRequest struct {
+	UseGitHubProxy bool `json:"useGitHubProxy"`
 }
 
 type updateJobStatus struct {
@@ -92,11 +97,18 @@ func (s *Server) updateStatus(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) applyUpdate(w http.ResponseWriter, r *http.Request) {
+	req := updateApplyRequest{UseGitHubProxy: true}
+	if r.Body != nil {
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil && !errors.Is(err, io.EOF) {
+			writeError(w, http.StatusBadRequest, err)
+			return
+		}
+	}
 	if !s.startUpdateJob() {
 		writeError(w, http.StatusConflict, errors.New("update is already running"))
 		return
 	}
-	go s.runUpdateJob()
+	go s.runUpdateJob(req.UseGitHubProxy)
 	writeOK(w, http.StatusAccepted, updateApplyResponse{Started: true, CurrentVersion: AppVersion, Message: "Update started."})
 }
 
@@ -214,7 +226,7 @@ func (s *Server) setUpdateJobStatus(mutator func(*updateJobStatus)) {
 	mutator(&s.updateJob)
 }
 
-func (s *Server) runUpdateJob() {
+func (s *Server) runUpdateJob(useGitHubProxy bool) {
 	ctx, cancel := context.WithTimeout(context.Background(), 12*time.Minute)
 	defer cancel()
 
@@ -232,12 +244,19 @@ func (s *Server) runUpdateJob() {
 		s.finishUpdateJob(false, info.Message, errors.New(info.Message))
 		return
 	}
+	if useGitHubProxy {
+		info.ZipURL = githubProxyURL(info.ZipURL)
+	}
+	downloadMessage := "Downloading " + info.PackageName + "..."
+	if useGitHubProxy {
+		downloadMessage = "Downloading " + info.PackageName + " via GH proxy..."
+	}
 	s.setUpdateJobStatus(func(job *updateJobStatus) {
 		job.LatestVersion = info.LatestVersion
 		job.PackageName = info.PackageName
 		job.PackageKind = info.PackageKind
 		job.Phase = "downloading"
-		job.Message = "Downloading " + info.PackageName + "..."
+		job.Message = downloadMessage
 		job.Percent = 5
 	})
 
@@ -253,7 +272,7 @@ func (s *Server) runUpdateJob() {
 					job.Percent = 75
 				}
 			}
-			job.Message = "Downloading " + info.PackageName + "..."
+			job.Message = downloadMessage
 		})
 	}, func(phase, message string, percent int) {
 		s.setUpdateJobStatus(func(job *updateJobStatus) {
@@ -278,6 +297,17 @@ func (s *Server) runUpdateJob() {
 		time.Sleep(900 * time.Millisecond)
 		os.Exit(0)
 	}()
+}
+
+func githubProxyURL(rawURL string) string {
+	rawURL = strings.TrimSpace(rawURL)
+	if rawURL == "" || strings.HasPrefix(rawURL, githubProxyPrefix) {
+		return rawURL
+	}
+	if strings.HasPrefix(rawURL, "http://") || strings.HasPrefix(rawURL, "https://") {
+		return githubProxyPrefix + rawURL
+	}
+	return rawURL
 }
 
 func (s *Server) finishUpdateJob(ok bool, message string, err error) {
