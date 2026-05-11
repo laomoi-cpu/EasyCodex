@@ -621,8 +621,38 @@ func TestTerminalPageIsAvailableRemotely(t *testing.T) {
 		!strings.Contains(body, "setInterval(() =>") ||
 		!strings.Contains(body, "function setKeyPanel(show)") ||
 		!strings.Contains(body, "$('toggleKeys').onclick = () => setKeyPanel($('keyPanel').hidden)") ||
+		!strings.Contains(body, `id="spawnDialog"`) ||
+		!strings.Contains(body, "function openSpawnDialog(cwd)") ||
+		!strings.Contains(body, "$('newSession').onclick = () => openSpawnDialog()") ||
+		!strings.Contains(body, "/api/codex/sessions?limit=20") ||
+		!strings.Contains(body, "['cmd.exe','/k','codex','resume']") ||
 		!strings.Contains(body, "snapshot?lines=180&escapes=1") {
 		t.Fatalf("unexpected terminal page: %s", body)
+	}
+}
+
+func TestReadCodexSessionItemUsesUserMessage(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "rollout-2026-05-11T00-00-00-aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee.jsonl")
+	data := strings.Join([]string{
+		`{"type":"session_meta","payload":{"id":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee","cwd":"D:\\mgame","timestamp":"2026-05-11T08:00:00Z"}}`,
+		`{"type":"response_item","payload":{"type":"message","role":"developer","content":[{"type":"input_text","text":"internal instruction should be ignored"}]}}`,
+		`{"type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"<environment_context>\n  <cwd>D:\\mgame</cwd>\n</environment_context>"}]}}`,
+		`{"type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"hi，分析一下项目"}]}}`,
+	}, "\n")
+	if err := os.WriteFile(path, []byte(data), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	item, ok := readCodexSessionItem(path)
+	if !ok {
+		t.Fatal("expected codex session item")
+	}
+	if item.ID != "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee" ||
+		item.CWD != `D:\mgame` ||
+		item.Timestamp != "2026-05-11T08:00:00Z" ||
+		item.Summary != "hi，分析一下项目" {
+		t.Fatalf("unexpected session item: %#v", item)
 	}
 }
 

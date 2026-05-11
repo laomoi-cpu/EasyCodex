@@ -151,6 +151,14 @@ type attachmentUpload struct {
 	MIME         string `json:"mime,omitempty"`
 }
 
+type codexSessionItem struct {
+	ID        string `json:"id"`
+	CWD       string `json:"cwd,omitempty"`
+	Timestamp string `json:"timestamp,omitempty"`
+	Summary   string `json:"summary,omitempty"`
+	Path      string `json:"path,omitempty"`
+}
+
 type weztermPane struct {
 	WindowID         int             `json:"window_id"`
 	WindowTitle      string          `json:"window_title"`
@@ -260,6 +268,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/pairing/qr.svg", s.pairingQR)
 	mux.HandleFunc("GET /api/mobile-pair", s.mobilePair)
 	mux.HandleFunc("GET /api/config", s.auth(s.appConfig))
+	mux.HandleFunc("GET /api/codex/sessions", s.auth(s.codexSessions))
 	mux.HandleFunc("GET /api/settings", s.localOnly(s.settings))
 	mux.HandleFunc("GET /api/connections", s.localOnly(s.connections))
 	mux.HandleFunc("GET /api/network-tests", s.localOnly(s.networkTests))
@@ -380,6 +389,16 @@ func (s *Server) appConfig(w http.ResponseWriter, r *http.Request) {
 		Instances: s.instanceResponses(),
 		Defaults:  s.mobileDefaultsResponse(),
 	})
+}
+
+func (s *Server) codexSessions(w http.ResponseWriter, r *http.Request) {
+	limit := parsePositiveInt(r.URL.Query().Get("limit"), 20, 100)
+	sessions, err := recentCodexSessions(limit)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, err)
+		return
+	}
+	writeOK(w, http.StatusOK, map[string]any{"sessions": sessions})
 }
 
 func (s *Server) mobileDefaultsResponse() mobileDefaultsResponse {
@@ -847,6 +866,160 @@ func isWithinDir(baseDir, path string) bool {
 	return rel == "." || (rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)))
 }
 
+func recentCodexSessions(limit int) ([]codexSessionItem, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return nil, err
+	}
+	root := filepath.Join(home, ".codex", "sessions")
+	var paths []string
+	if err := filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
+		if err != nil || entry == nil || entry.IsDir() || !strings.HasSuffix(strings.ToLower(entry.Name()), ".jsonl") {
+			return nil
+		}
+		paths = append(paths, path)
+		return nil
+	}); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return []codexSessionItem{}, nil
+		}
+		return nil, err
+	}
+	sort.Slice(paths, func(i, j int) bool {
+		left, leftErr := os.Stat(paths[i])
+		right, rightErr := os.Stat(paths[j])
+		if leftErr != nil || rightErr != nil {
+			return paths[i] > paths[j]
+		}
+		return left.ModTime().After(right.ModTime())
+	})
+	if limit > len(paths) {
+		limit = len(paths)
+	}
+	items := make([]codexSessionItem, 0, limit)
+	for _, path := range paths {
+		item, ok := readCodexSessionItem(path)
+		if !ok {
+			continue
+		}
+		items = append(items, item)
+		if len(items) >= limit {
+			break
+		}
+	}
+	return items, nil
+}
+
+func readCodexSessionItem(path string) (codexSessionItem, bool) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return codexSessionItem{}, false
+	}
+	lines := strings.Split(string(data), "\n")
+	item := codexSessionItem{Path: path}
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		var record map[string]any
+		if err := json.Unmarshal([]byte(line), &record); err != nil {
+			continue
+		}
+		if record["type"] == "session_meta" {
+			if payload, ok := record["payload"].(map[string]any); ok {
+				item.ID = stringField(payload, "id")
+				item.CWD = stringField(payload, "cwd")
+				item.Timestamp = stringField(payload, "timestamp")
+			}
+			continue
+		}
+		if item.Summary == "" {
+			item.Summary = summarizeCodexRecord(record)
+		}
+		if item.ID != "" && item.Summary != "" {
+			break
+		}
+	}
+	if item.ID == "" {
+		item.ID = codexSessionIDFromPath(path)
+	}
+	if item.Timestamp == "" {
+		if info, err := os.Stat(path); err == nil {
+			item.Timestamp = info.ModTime().Format(time.RFC3339)
+		}
+	}
+	if item.Summary == "" {
+		item.Summary = filepath.Base(path)
+	}
+	item.Summary = summarizePaneInput(item.Summary, 60)
+	return item, item.ID != ""
+}
+
+func summarizeCodexRecord(record map[string]any) string {
+	payload, ok := record["payload"].(map[string]any)
+	if !ok {
+		return ""
+	}
+	if role := stringField(payload, "role"); role != "" && role != "user" {
+		return ""
+	}
+	if text := codexUserSummaryCandidate(stringField(payload, "message")); text != "" {
+		return text
+	}
+	if text := codexUserSummaryCandidate(stringField(payload, "text")); text != "" {
+		return text
+	}
+	content, ok := payload["content"].([]any)
+	if !ok {
+		return ""
+	}
+	for _, part := range content {
+		if value, ok := part.(map[string]any); ok {
+			if text := codexUserSummaryCandidate(stringField(value, "text")); text != "" {
+				return text
+			}
+		}
+	}
+	return ""
+}
+
+func codexUserSummaryCandidate(text string) string {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return ""
+	}
+	for _, prefix := range []string{
+		"<environment_context>",
+		"<permissions instructions>",
+		"<collaboration_mode>",
+		"<skills_instructions>",
+	} {
+		if strings.HasPrefix(text, prefix) {
+			return ""
+		}
+	}
+	return text
+}
+
+func stringField(values map[string]any, key string) string {
+	if value, ok := values[key].(string); ok {
+		return value
+	}
+	return ""
+}
+
+func codexSessionIDFromPath(path string) string {
+	name := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
+	if len(name) >= 36 {
+		candidate := name[len(name)-36:]
+		if strings.Count(candidate, "-") == 4 {
+			return candidate
+		}
+	}
+	return ""
+}
+
 func summarizePaneInput(text string, limit int) string {
 	text = strings.TrimSpace(strings.Map(func(r rune) rune {
 		if r < 32 || r == 127 {
@@ -1231,6 +1404,20 @@ func parseTextQuery(w http.ResponseWriter, r *http.Request) (textQuery, bool) {
 		query.Lines = value
 	}
 	return query, true
+}
+
+func parsePositiveInt(raw string, fallback, max int) int {
+	if raw == "" {
+		return fallback
+	}
+	value, err := strconv.Atoi(raw)
+	if err != nil || value < 1 {
+		return fallback
+	}
+	if max > 0 && value > max {
+		return max
+	}
+	return value
 }
 
 func parseBool(value string) bool {
