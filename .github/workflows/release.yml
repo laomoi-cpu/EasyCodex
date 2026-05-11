@@ -64,12 +64,21 @@ jobs:
         shell: pwsh
         run: Compress-Archive -Path "${{ steps.version.outputs.version }}\*" -DestinationPath "EasyCodex-${{ steps.version.outputs.version }}.zip" -Force
 
+      - name: Compress update patch
+        shell: pwsh
+        run: |
+          Compress-Archive -Path @(
+            "${{ steps.version.outputs.version }}\EasyCodex.exe",
+            "${{ steps.version.outputs.version }}\wezterm-config"
+          ) -DestinationPath "EasyCodex-${{ steps.version.outputs.version }}.patch.zip" -Force
+
       - name: Upload package
         uses: actions/upload-artifact@v4
         with:
           name: EasyCodex-${{ steps.version.outputs.version }}
           path: |
             EasyCodex-${{ steps.version.outputs.version }}.zip
+            EasyCodex-${{ steps.version.outputs.version }}.patch.zip
             ${{ steps.version.outputs.version }}/**
 
       - name: Publish GitHub Release
@@ -80,6 +89,7 @@ jobs:
           tag_name: ${{ github.ref_name }}
           files: |
             EasyCodex-${{ steps.version.outputs.version }}.zip
+            EasyCodex-${{ steps.version.outputs.version }}.patch.zip
             ${{ steps.version.outputs.version }}/EasyCodex.exe
             ${{ steps.version.outputs.version }}/EasyCodex-${{ steps.version.outputs.version }}.apk
             ${{ steps.version.outputs.version }}/manifest.json

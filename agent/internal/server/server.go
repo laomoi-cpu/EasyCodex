@@ -42,6 +42,7 @@ type Server struct {
 	instances  map[string]config.Instance
 	clients    map[string]clientConnection
 	restart    func()
+	updateJob  updateJobStatus
 	logger     *slog.Logger
 }
 
@@ -218,6 +219,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/settings", s.localOnly(s.settings))
 	mux.HandleFunc("GET /api/connections", s.localOnly(s.connections))
 	mux.HandleFunc("GET /api/update/check", s.localOnly(s.checkUpdate))
+	mux.HandleFunc("GET /api/update/status", s.localOnly(s.updateStatus))
 	mux.HandleFunc("POST /api/update/apply", s.localOnly(s.applyUpdate))
 	mux.HandleFunc("POST /api/restart", s.localOnly(s.restartAgent))
 	mux.HandleFunc("POST /api/settings", s.localOnly(s.saveSettings))

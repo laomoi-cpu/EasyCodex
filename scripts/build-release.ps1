@@ -124,6 +124,7 @@ $manifest = [ordered]@{
         "EasyCodex.exe",
         "wezterm-config/"
     )
+    patchPackage = "EasyCodex-$Version.patch.zip"
 }
 $manifest | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $releaseDir "manifest.json") -Encoding UTF8
 

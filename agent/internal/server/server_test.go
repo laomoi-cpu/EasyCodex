@@ -288,9 +288,15 @@ func TestSettingsIncludesVersion(t *testing.T) {
 		!strings.Contains(body, `class="github-link"`) {
 		t.Fatalf("expected GitHub link in settings page: %s", body)
 	}
+	if !strings.Contains(body, `class="version-badge"`) ||
+		!strings.Contains(body, "v1.2.3-test") {
+		t.Fatalf("expected version badge in settings page: %s", body)
+	}
 	if !strings.Contains(body, "Check Update") ||
 		!strings.Contains(body, "/api/update/check") ||
-		!strings.Contains(body, "/api/update/apply") {
+		!strings.Contains(body, "/api/update/apply") ||
+		!strings.Contains(body, "/api/update/status") ||
+		!strings.Contains(body, `id="updateProgressBar"`) {
 		t.Fatalf("expected update controls in settings page: %s", body)
 	}
 	if !strings.Contains(body, `id="lanPromptShown"`) ||
@@ -310,6 +316,7 @@ func TestUpdateCheckReportsNewRelease(t *testing.T) {
 			"html_url":     "https://github.com/laomoi-cpu/EasyCodex/releases/tag/v0.0.8",
 			"published_at": "2026-05-11T00:00:00Z",
 			"assets": []map[string]any{
+				{"name": "EasyCodex-0.0.8.patch.zip", "browser_download_url": "https://example.com/EasyCodex-0.0.8.patch.zip"},
 				{"name": "EasyCodex-0.0.8.zip", "browser_download_url": "https://example.com/EasyCodex-0.0.8.zip"},
 			},
 		})
@@ -341,13 +348,16 @@ func TestUpdateCheckReportsNewRelease(t *testing.T) {
 			CanUpdate      bool   `json:"canUpdate"`
 			UpToDate       bool   `json:"upToDate"`
 			ZipURL         string `json:"zipUrl"`
+			PackageName    string `json:"packageName"`
+			PackageKind    string `json:"packageKind"`
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
 		t.Fatal(err)
 	}
 	if !payload.OK || payload.Data.CurrentVersion != "0.0.7" || payload.Data.LatestVersion != "0.0.8" ||
-		!payload.Data.CanUpdate || payload.Data.UpToDate || payload.Data.ZipURL == "" {
+		!payload.Data.CanUpdate || payload.Data.UpToDate || payload.Data.ZipURL != "https://example.com/EasyCodex-0.0.8.patch.zip" ||
+		payload.Data.PackageName != "EasyCodex-0.0.8.patch.zip" || payload.Data.PackageKind != "patch" {
 		t.Fatalf("unexpected update payload: %#v", payload)
 	}
 }

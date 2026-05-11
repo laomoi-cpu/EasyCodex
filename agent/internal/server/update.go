@@ -31,6 +31,8 @@ type updateCheckResponse struct {
 	Message        string `json:"message"`
 	ReleaseURL     string `json:"releaseUrl"`
 	ZipURL         string `json:"zipUrl"`
+	PackageName    string `json:"packageName"`
+	PackageKind    string `json:"packageKind"`
 	PublishedAt    string `json:"publishedAt"`
 }
 
@@ -39,6 +41,21 @@ type updateApplyResponse struct {
 	CurrentVersion string `json:"currentVersion"`
 	LatestVersion  string `json:"latestVersion"`
 	Message        string `json:"message"`
+}
+
+type updateJobStatus struct {
+	Active        bool   `json:"active"`
+	Done          bool   `json:"done"`
+	OK            bool   `json:"ok"`
+	Phase         string `json:"phase"`
+	Message       string `json:"message"`
+	Percent       int    `json:"percent"`
+	Bytes         int64  `json:"bytes"`
+	TotalBytes    int64  `json:"totalBytes"`
+	PackageName   string `json:"packageName"`
+	PackageKind   string `json:"packageKind"`
+	LatestVersion string `json:"latestVersion"`
+	Error         string `json:"error,omitempty"`
 }
 
 type githubRelease struct {
@@ -67,36 +84,17 @@ func (s *Server) checkUpdate(w http.ResponseWriter, r *http.Request) {
 	writeOK(w, http.StatusOK, info)
 }
 
+func (s *Server) updateStatus(w http.ResponseWriter, r *http.Request) {
+	writeOK(w, http.StatusOK, s.updateJobSnapshot())
+}
+
 func (s *Server) applyUpdate(w http.ResponseWriter, r *http.Request) {
-	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Minute)
-	defer cancel()
-
-	info, err := checkLatestUpdate(ctx, AppVersion)
-	if err != nil {
-		writeError(w, http.StatusBadGateway, err)
+	if !s.startUpdateJob() {
+		writeError(w, http.StatusConflict, errors.New("update is already running"))
 		return
 	}
-	if !info.CanUpdate {
-		writeError(w, http.StatusBadRequest, errors.New(info.Message))
-		return
-	}
-
-	cfg := s.configSnapshot()
-	if err := prepareAndStartUpdater(ctx, cfg.Root, info); err != nil {
-		writeError(w, http.StatusInternalServerError, err)
-		return
-	}
-
-	writeOK(w, http.StatusAccepted, updateApplyResponse{
-		Started:        true,
-		CurrentVersion: info.CurrentVersion,
-		LatestVersion:  info.LatestVersion,
-		Message:        "Update prepared. Agent will restart automatically.",
-	})
-	go func() {
-		time.Sleep(600 * time.Millisecond)
-		os.Exit(0)
-	}()
+	go s.runUpdateJob()
+	writeOK(w, http.StatusAccepted, updateApplyResponse{Started: true, CurrentVersion: AppVersion, Message: "Update started."})
 }
 
 func checkLatestUpdate(ctx context.Context, current string) (updateCheckResponse, error) {
@@ -121,12 +119,14 @@ func checkLatestUpdate(ctx context.Context, current string) (updateCheckResponse
 		return updateCheckResponse{}, err
 	}
 	latest := normalizeVersion(release.TagName)
-	zipURL := releaseZipURL(release, latest)
+	asset := releasePackageAsset(release, latest)
 	info := updateCheckResponse{
 		CurrentVersion: current,
 		LatestVersion:  latest,
 		ReleaseURL:     release.HTMLURL,
-		ZipURL:         zipURL,
+		ZipURL:         asset.BrowserDownloadURL,
+		PackageName:    asset.Name,
+		PackageKind:    packageKind(asset.Name),
 		PublishedAt:    release.PublishedAt,
 		IsDev:          isDevVersion(current),
 	}
@@ -138,7 +138,7 @@ func checkLatestUpdate(ctx context.Context, current string) (updateCheckResponse
 		info.Message = "Latest release does not contain a valid version."
 		return info, nil
 	}
-	if zipURL == "" {
+	if info.ZipURL == "" {
 		info.Message = "Latest release does not contain an EasyCodex zip package."
 		return info, nil
 	}
@@ -158,22 +158,140 @@ func checkLatestUpdate(ctx context.Context, current string) (updateCheckResponse
 	return info, nil
 }
 
-func releaseZipURL(release githubRelease, version string) string {
-	want := "EasyCodex-" + version + ".zip"
+func releasePackageAsset(release githubRelease, version string) githubAsset {
+	wantPatch := "EasyCodex-" + version + ".patch.zip"
 	for _, asset := range release.Assets {
-		if strings.EqualFold(asset.Name, want) {
-			return asset.BrowserDownloadURL
+		if strings.EqualFold(asset.Name, wantPatch) {
+			return asset
+		}
+	}
+	wantFull := "EasyCodex-" + version + ".zip"
+	for _, asset := range release.Assets {
+		if strings.EqualFold(asset.Name, wantFull) {
+			return asset
 		}
 	}
 	for _, asset := range release.Assets {
 		if strings.HasSuffix(strings.ToLower(asset.Name), ".zip") && strings.HasPrefix(strings.ToLower(asset.Name), "easycodex-") {
-			return asset.BrowserDownloadURL
+			return asset
 		}
+	}
+	return githubAsset{}
+}
+
+func packageKind(name string) string {
+	if strings.HasSuffix(strings.ToLower(name), ".patch.zip") {
+		return "patch"
+	}
+	if name != "" {
+		return "full"
 	}
 	return ""
 }
 
-func prepareAndStartUpdater(ctx context.Context, installRoot string, info updateCheckResponse) error {
+func (s *Server) startUpdateJob() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.updateJob.Active {
+		return false
+	}
+	s.updateJob = updateJobStatus{Active: true, Phase: "starting", Message: "Starting update...", Percent: 0}
+	return true
+}
+
+func (s *Server) updateJobSnapshot() updateJobStatus {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.updateJob
+}
+
+func (s *Server) setUpdateJobStatus(mutator func(*updateJobStatus)) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	mutator(&s.updateJob)
+}
+
+func (s *Server) runUpdateJob() {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+
+	s.setUpdateJobStatus(func(job *updateJobStatus) {
+		job.Phase = "checking"
+		job.Message = "Checking latest release..."
+		job.Percent = 2
+	})
+	info, err := checkLatestUpdate(ctx, AppVersion)
+	if err != nil {
+		s.finishUpdateJob(false, "Update check failed.", err)
+		return
+	}
+	if !info.CanUpdate {
+		s.finishUpdateJob(false, info.Message, errors.New(info.Message))
+		return
+	}
+	s.setUpdateJobStatus(func(job *updateJobStatus) {
+		job.LatestVersion = info.LatestVersion
+		job.PackageName = info.PackageName
+		job.PackageKind = info.PackageKind
+		job.Phase = "downloading"
+		job.Message = "Downloading " + info.PackageName + "..."
+		job.Percent = 5
+	})
+
+	cfg := s.configSnapshot()
+	if err := prepareAndStartUpdater(ctx, cfg.Root, info, func(written, total int64) {
+		s.setUpdateJobStatus(func(job *updateJobStatus) {
+			job.Phase = "downloading"
+			job.Bytes = written
+			job.TotalBytes = total
+			if total > 0 {
+				job.Percent = 5 + int(written*70/total)
+				if job.Percent > 75 {
+					job.Percent = 75
+				}
+			}
+			job.Message = "Downloading " + info.PackageName + "..."
+		})
+	}, func(phase, message string, percent int) {
+		s.setUpdateJobStatus(func(job *updateJobStatus) {
+			job.Phase = phase
+			job.Message = message
+			job.Percent = percent
+		})
+	}); err != nil {
+		s.finishUpdateJob(false, "Update failed.", err)
+		return
+	}
+
+	s.setUpdateJobStatus(func(job *updateJobStatus) {
+		job.Active = false
+		job.Done = true
+		job.OK = true
+		job.Phase = "restarting"
+		job.Message = "Update prepared. Agent will restart automatically."
+		job.Percent = 100
+	})
+	go func() {
+		time.Sleep(900 * time.Millisecond)
+		os.Exit(0)
+	}()
+}
+
+func (s *Server) finishUpdateJob(ok bool, message string, err error) {
+	s.setUpdateJobStatus(func(job *updateJobStatus) {
+		job.Active = false
+		job.Done = true
+		job.OK = ok
+		job.Phase = "failed"
+		job.Message = message
+		job.Percent = 100
+		if err != nil {
+			job.Error = err.Error()
+		}
+	})
+}
+
+func prepareAndStartUpdater(ctx context.Context, installRoot string, info updateCheckResponse, progress func(written, total int64), phase func(phase, message string, percent int)) error {
 	if strings.TrimSpace(installRoot) == "" {
 		return errors.New("install root is empty")
 	}
@@ -190,13 +308,19 @@ func prepareAndStartUpdater(ctx context.Context, installRoot string, info update
 	if err := os.MkdirAll(extractRoot, 0755); err != nil {
 		return err
 	}
-	zipPath := filepath.Join(staging, "EasyCodex-"+info.LatestVersion+".zip")
-	if err := downloadFile(ctx, info.ZipURL, zipPath); err != nil {
+	packageName := info.PackageName
+	if packageName == "" {
+		packageName = "EasyCodex-" + info.LatestVersion + ".zip"
+	}
+	zipPath := filepath.Join(staging, packageName)
+	if err := downloadFile(ctx, info.ZipURL, zipPath, progress); err != nil {
 		return err
 	}
+	phase("extracting", "Extracting update package...", 80)
 	if err := unzip(zipPath, extractRoot); err != nil {
 		return err
 	}
+	phase("preparing", "Preparing updater...", 90)
 	packageRoot, err := locatePackageRoot(extractRoot)
 	if err != nil {
 		return err
@@ -211,10 +335,14 @@ func prepareAndStartUpdater(ctx context.Context, installRoot string, info update
 	}
 	cmd := exec.Command("powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-WindowStyle", "Hidden", "-File", scriptPath)
 	winproc.HideWindow(cmd)
-	return cmd.Start()
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+	phase("restarting", "Updater is ready. Restarting Agent...", 98)
+	return nil
 }
 
-func downloadFile(ctx context.Context, url, dst string) error {
+func downloadFile(ctx context.Context, url, dst string, progress func(written, total int64)) error {
 	if strings.TrimSpace(url) == "" {
 		return errors.New("download URL is empty")
 	}
@@ -236,7 +364,12 @@ func downloadFile(ctx context.Context, url, dst string) error {
 	if err != nil {
 		return err
 	}
-	_, copyErr := io.Copy(out, res.Body)
+	total := res.ContentLength
+	if progress != nil {
+		progress(0, total)
+	}
+	reader := &progressReader{reader: res.Body, total: total, progress: progress}
+	_, copyErr := io.Copy(out, reader)
 	closeErr := out.Close()
 	if copyErr != nil {
 		_ = os.Remove(tmp)
@@ -247,6 +380,24 @@ func downloadFile(ctx context.Context, url, dst string) error {
 		return closeErr
 	}
 	return os.Rename(tmp, dst)
+}
+
+type progressReader struct {
+	reader   io.Reader
+	written  int64
+	total    int64
+	progress func(written, total int64)
+}
+
+func (reader *progressReader) Read(p []byte) (int, error) {
+	n, err := reader.reader.Read(p)
+	if n > 0 {
+		reader.written += int64(n)
+		if reader.progress != nil {
+			reader.progress(reader.written, reader.total)
+		}
+	}
+	return n, err
 }
 
 func unzip(zipPath, dst string) error {

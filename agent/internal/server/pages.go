@@ -172,7 +172,7 @@ func pageShell(title, active, body, script string) string {
 <body class="page-` + html.EscapeString(active) + `">
 <header class="topbar">
   <a class="brand" href="/pairing"><img src="/assets/easycodex.svg" alt=""><span>EasyCodex</span></a>
-  <nav>` + nav("pairing", "/pairing", "Pairing") + nav("connections", "/connections", "Connections") + nav("settings", "/settings", "Settings") + nav("status", "/status", "Status") + `<a class="github-link" href="https://github.com/laomoi-cpu/EasyCodex" target="_blank" rel="noreferrer">GitHub</a></nav>
+  <nav>` + nav("pairing", "/pairing", "Pairing") + nav("connections", "/connections", "Connections") + nav("settings", "/settings", "Settings") + nav("status", "/status", "Status") + `<span class="version-badge">v` + html.EscapeString(AppVersion) + `</span><a class="github-link" href="https://github.com/laomoi-cpu/EasyCodex" target="_blank" rel="noreferrer">GitHub</a></nav>
 </header>
 <main>` + body + `</main>
 ` + script + `
@@ -318,6 +318,8 @@ func settingsPageHTML() string {
   <section class="panel">
     <h2>Version Update</h2>
     <div id="updateState" class="update-state muted">Click Check Update to compare with the latest GitHub release.</div>
+    <div class="update-progress"><div id="updateProgressBar"></div></div>
+    <div id="updateProgressText" class="muted-text">No update running.</div>
     <a id="releaseLink" class="link-field update-link" href="#" target="_blank" rel="noreferrer" hidden>Open release page</a>
     <div class="dialog-actions update-actions">
       <button type="button" class="secondary" id="checkUpdate">Check Update</button>
@@ -362,12 +364,12 @@ func consoleCSS() string {
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:14px/1.5 "Segoe UI",Arial,sans-serif}code,input,textarea,select{font-family:Consolas,"Cascadia Mono",monospace}
 .topbar{height:64px;display:flex;align-items:center;justify-content:space-between;padding:0 28px;background:rgba(255,255,255,.9);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:2;backdrop-filter:blur(12px)}
 .brand{display:flex;align-items:center;gap:10px;color:var(--ink);text-decoration:none;font-weight:700;font-size:17px}.brand img{width:34px;height:34px}
-nav{display:flex;gap:6px;align-items:center}nav a{color:#475467;text-decoration:none;padding:8px 12px;border-radius:7px}nav a.active,nav a:hover{background:#e7f4f4;color:#075f63}nav a.github-link{background:#2563eb;color:#fff;font-weight:700}nav a.github-link:hover{background:#1d4ed8;color:#fff}
+nav{display:flex;gap:6px;align-items:center}nav a{color:#475467;text-decoration:none;padding:8px 12px;border-radius:7px}nav a.active,nav a:hover{background:#e7f4f4;color:#075f63}.version-badge{display:inline-flex;align-items:center;height:30px;padding:0 9px;border-radius:999px;background:#eef2ff;color:#3730a3;font-size:12px;font-weight:800}nav a.github-link{background:#2563eb;color:#fff;font-weight:700}nav a.github-link:hover{background:#1d4ed8;color:#fff}
 main{max-width:1180px;margin:0 auto;padding:28px}.hero{display:flex;justify-content:space-between;align-items:center;gap:28px;margin-bottom:22px}.hero.compact{align-items:flex-end}.eyebrow{text-transform:uppercase;letter-spacing:.08em;color:var(--accent);font-weight:700;font-size:12px;margin:0 0 6px}.hero h1{margin:0;max-width:780px;font-size:34px;line-height:1.12;letter-spacing:0}.lead{max-width:820px;color:var(--muted);font-size:16px;margin:10px 0 0}.hero-mark{width:126px;height:126px;flex:0 0 auto}
 .panel,.pair-card,.status-card{background:var(--panel);border:1px solid var(--line);border-radius:8px;box-shadow:var(--shadow)}.panel{padding:22px}.panel h2{margin:0 0 16px;font-size:17px}.panel-grid{display:grid;gap:16px}.panel-grid.two{grid-template-columns:repeat(2,minmax(0,1fr))}
 .pair-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:16px}.pair-card{display:grid;grid-template-columns:190px minmax(0,1fr);gap:18px;padding:18px}.qr-frame{display:grid;place-items:center;border:1px solid var(--line);background:#fafafa;border-radius:8px;aspect-ratio:1}.qr-frame img{width:166px;height:166px}.pair-meta{min-width:0}.pair-meta h3{margin:2px 0 6px;font-size:18px}.pair-hint{margin:0 0 10px;color:var(--muted);font-size:13px;line-height:1.5}.pair-meta label{display:block;color:var(--muted);font-size:12px;margin:12px 0 4px}.pair-meta code,.kv dd,.link-field{display:block;word-break:break-all;background:#f5f7fa;border:1px solid #e4e7ec;border-radius:6px;padding:9px;color:#253244}.link-field{color:#1d4ed8;text-decoration:none;font-weight:700}.link-field:hover{text-decoration:underline}
 .badge{display:inline-flex;align-items:center;height:24px;padding:0 9px;border-radius:999px;background:#e7f4f4;color:#075f63;font-weight:700;font-size:12px}.table-wrap{overflow:auto;border:1px solid var(--line);border-radius:8px}.connection-table{width:100%;border-collapse:collapse;min-width:860px;background:#fff}.connection-table th,.connection-table td{padding:11px 12px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}.connection-table th{background:#f8fafc;color:#475467;font-size:12px;text-transform:uppercase;letter-spacing:.04em}.connection-table tr:last-child td{border-bottom:0}.connection-table code{display:block;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.muted-text{color:var(--muted);font-size:12px}.settings-layout{display:grid;grid-template-columns:1fr 1fr;gap:16px}.settings-layout .panel:nth-child(3),.settings-layout .panel:nth-child(4){grid-column:span 1}.field-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}label span{display:block;color:#344054;font-weight:600;margin-bottom:6px}input,textarea,select{width:100%;border:1px solid #cfd6df;border-radius:7px;padding:10px 11px;background:#fff;color:var(--text);font-size:14px}textarea{resize:vertical}.check-row{display:flex;gap:10px;align-items:center;margin-top:16px}.check-row input{width:auto}.check-row span{margin:0;font-weight:500}
-.update-state{border:1px solid var(--line);border-radius:7px;background:#f8fafc;padding:12px;min-height:68px;color:#344054}.update-state.ok{background:#ecfdf3;border-color:#abefc6;color:#067647}.update-state.work{background:#eff6ff;border-color:#bfdbfe;color:#1d4ed8}.update-state.err{background:#fef3f2;border-color:#fecdca;color:#b42318}.update-link{margin-top:10px}.update-actions{margin-top:14px}button:disabled{opacity:.55;cursor:not-allowed}
+.update-state{border:1px solid var(--line);border-radius:7px;background:#f8fafc;padding:12px;min-height:68px;color:#344054}.update-state.ok{background:#ecfdf3;border-color:#abefc6;color:#067647}.update-state.work{background:#eff6ff;border-color:#bfdbfe;color:#1d4ed8}.update-state.err{background:#fef3f2;border-color:#fecdca;color:#b42318}.update-progress{height:9px;border-radius:999px;background:#e5e7eb;overflow:hidden;margin-top:12px}.update-progress div{height:100%;width:0;background:#2563eb;transition:width .18s ease}.update-link{margin-top:10px}.update-actions{margin-top:14px}button:disabled{opacity:.55;cursor:not-allowed}
 .panel-title-row{display:flex;align-items:center;justify-content:space-between;gap:12px}.instance-row{display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:10px;align-items:end;margin-top:10px}.choice-list{display:grid;gap:10px}.choice{display:flex;align-items:center;gap:10px;padding:10px;border:1px solid var(--line);border-radius:7px}.choice input{width:auto}.actionbar{grid-column:1/-1;display:flex;justify-content:flex-end;gap:10px;padding:14px 0 4px}
 button{border:0;border-radius:7px;background:var(--accent);color:#fff;font-weight:700;padding:10px 16px;cursor:pointer}button:hover{filter:brightness(.96)}button.secondary{background:#fff;color:#344054;border:1px solid #cfd6df}.remove{background:#fff4ed;color:#b54708;border:1px solid #fed7aa}.status-card{padding:16px;min-width:220px}.status-card.muted{color:var(--muted)}.status-dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:#12b76a;margin-right:8px}.status-card small{display:block;color:var(--muted);margin-top:4px}.kv{display:grid;grid-template-columns:145px minmax(0,1fr);gap:10px;margin:0}.kv dt{color:var(--muted)}.kv dd{margin:0}
 .pair-section{margin-top:16px}.pair-section h2{margin-bottom:16px}.terminal-page{display:grid;gap:16px}.terminal-connect{display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:22px;align-items:end}.connect-form{display:grid;gap:12px}.terminal-app{display:grid;grid-template-columns:280px minmax(0,1fr);gap:14px;height:calc(100vh - 122px);min-height:620px}.terminal-sidebar,.terminal-workbench{background:#fff;border:1px solid var(--line);border-radius:8px;box-shadow:var(--shadow);min-height:0}.terminal-sidebar{display:flex;flex-direction:column;padding:12px}.terminal-toolbar{display:grid;grid-template-columns:48px 1fr;gap:8px;margin-bottom:10px}.pane-list{display:grid;gap:8px;overflow:auto}.pane-item{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center;padding:9px;border:1px solid var(--line);border-radius:7px;background:#f8fafc;text-align:left;color:#18212f}.pane-item.active{background:#dbeafe;border-color:#93c5fd}.pane-item.selected{outline:2px solid #2563eb}.pane-main{display:block;min-width:0}.pane-title{display:block;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.pane-meta{display:block;color:var(--muted);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.pane-menu{padding:7px 9px}.terminal-workbench{display:grid;grid-template-rows:auto minmax(0,1fr) auto auto;padding:12px;gap:10px}.terminal-statusbar{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px}.status-pill{background:#e5e7eb;color:#374151;border:1px solid #d1d5db}.status-pill.ok{background:#d1fae5;color:#065f46;border-color:#86efac}.status-pill.work{background:#dbeafe;color:#1d4ed8;border-color:#93c5fd}.status-pill.err{background:#fee2e2;color:#991b1b;border-color:#fca5a5}.terminal-output{margin:0;overflow:auto;background:#0b1220;color:#e6edf3;border-radius:8px;padding:14px;font:13px/1.45 Consolas,"Cascadia Mono",monospace;white-space:pre-wrap;word-break:break-word}.send-row{display:grid;grid-template-columns:minmax(0,1fr) 54px 92px;gap:8px}.send-row input{height:44px}.key-panel{display:grid;grid-template-columns:repeat(9,minmax(0,1fr));gap:6px}.key-panel[hidden]{display:none!important}.key-panel button{padding:7px 6px;font-size:12px}.pane-dialog{border:1px solid var(--line);border-radius:8px;box-shadow:var(--shadow);max-width:560px;width:calc(100% - 28px);padding:18px}.pane-dialog h2{margin:0 0 14px}.dialog-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:16px}.danger{background:#fee2e2!important;color:#991b1b!important;border:1px solid #fca5a5!important}
@@ -797,9 +799,14 @@ func settingsJS() string {
 let currentConfig = null;
 let currentVersion = 'dev';
 let updateInfo = null;
+let updatePollTimer = 0;
 const $ = id => document.getElementById(id);
 function setState(text, kind='muted'){ const el=$('saveState'); el.className='status-card '+kind; el.textContent=text; }
 function setUpdateState(text, kind='muted'){ const el=$('updateState'); el.className='update-state '+kind; el.textContent=text; }
+function setUpdateProgress(percent, text){
+  $('updateProgressBar').style.width=Math.max(0, Math.min(100, percent||0))+'%';
+  $('updateProgressText').textContent=text||'No update running.';
+}
 function lines(value){ return value.split(/\r?\n/).map(x=>x.trim()).filter(Boolean); }
 function fill(){
   const c=currentConfig;
@@ -909,8 +916,10 @@ function renderUpdate(info){
     $('releaseLink').hidden=true;
   }
   const published=info.publishedAt ? '\nPublished: '+info.publishedAt : '';
-  const text='Current: '+(info.currentVersion||'dev')+'\nLatest: '+(info.latestVersion||'unknown')+'\n'+(info.message||'')+published;
+  const pkg=info.packageName ? '\nPackage: '+info.packageName+(info.packageKind==='patch'?' (small update)':'') : '';
+  const text='Current: '+(info.currentVersion||'dev')+'\nLatest: '+(info.latestVersion||'unknown')+'\n'+(info.message||'')+pkg+published;
   setUpdateState(text, info.canUpdate?'ok':(info.upToDate?'work':'muted'));
+  setUpdateProgress(0, info.packageKind==='patch'?'Ready to download small update package.':'Ready to download update package.');
 }
 async function checkUpdate(){
   $('checkUpdate').disabled=true; $('applyUpdate').disabled=true; setUpdateState('Checking GitHub latest release...','work');
@@ -925,13 +934,39 @@ async function checkUpdate(){
 }
 async function applyUpdate(){
   if(!updateInfo||!updateInfo.canUpdate) return;
-  $('checkUpdate').disabled=true; $('applyUpdate').disabled=true; setUpdateState('Downloading update and preparing restart...','work');
+  $('checkUpdate').disabled=true; $('applyUpdate').disabled=true; setUpdateState('Starting update...','work'); setUpdateProgress(0,'Starting update...');
   try{
     const res=await fetch('/api/update/apply',{method:'POST'}); const payload=await res.json(); if(!payload.ok) throw new Error(payload.error);
-    setUpdateState(payload.data.message+' The page will disconnect while Agent restarts.','ok');
+    pollUpdateStatus();
   }catch(err){
     setUpdateState(err.message,'err'); $('checkUpdate').disabled=false; $('applyUpdate').disabled=false;
   }
+}
+async function pollUpdateStatus(){
+  if(updatePollTimer) clearTimeout(updatePollTimer);
+  try{
+    const res=await fetch('/api/update/status'); const payload=await res.json(); if(!payload.ok) throw new Error(payload.error);
+    const job=payload.data||{};
+    const detail=job.totalBytes>0 ? ' '+formatBytes(job.bytes)+' / '+formatBytes(job.totalBytes) : '';
+    setUpdateProgress(job.percent||0, (job.message||job.phase||'Updating...')+detail);
+    setUpdateState((job.message||'Updating...')+(job.error?'\n'+job.error:''), job.error?'err':(job.done&&job.ok?'ok':'work'));
+    if(job.active){
+      updatePollTimer=setTimeout(pollUpdateStatus, 350);
+    }else{
+      $('checkUpdate').disabled=false;
+      $('applyUpdate').disabled=!(updateInfo&&updateInfo.canUpdate);
+      if(job.done&&job.ok) setUpdateState('Update prepared. The page will disconnect while Agent restarts.','ok');
+    }
+  }catch(err){
+    setUpdateState(err.message,'err');
+    updatePollTimer=setTimeout(pollUpdateStatus, 1200);
+  }
+}
+function formatBytes(value){
+  value=Number(value||0);
+  if(value>=1048576) return (value/1048576).toFixed(1)+' MB';
+  if(value>=1024) return (value/1024).toFixed(1)+' KB';
+  return value+' B';
 }
 function escapeHtml(v){ return String(v).replace(/[&<>"']/g, ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch])); }
 function escapeAttr(v){ return escapeHtml(v); }
