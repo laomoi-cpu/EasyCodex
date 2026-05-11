@@ -565,9 +565,13 @@ func TestTerminalPageIsAvailableRemotely(t *testing.T) {
 	body := rec.Body.String()
 	if !strings.Contains(body, "Browser Terminal") ||
 		!strings.Contains(body, "terminalApp") ||
+		strings.Contains(body, `<header class="topbar">`) ||
+		strings.Contains(body, `href="/settings"`) ||
 		strings.Contains(body, `id="uiLanguage"`) ||
 		strings.Contains(body, `class="lang-switch"`) ||
 		!strings.Contains(body, `class="page-terminal"`) ||
+		!strings.Contains(body, ".page-terminal main{max-width:none;height:100dvh") ||
+		!strings.Contains(body, ".pane-last{display:block") ||
 		!strings.Contains(body, ".page-terminal .terminal-output{min-height:62dvh") ||
 		!strings.Contains(body, ".page-terminal .send-row{position:sticky") ||
 		!strings.Contains(body, ".key-panel[hidden]{display:none!important}") ||
@@ -855,6 +859,42 @@ func TestSendText(t *testing.T) {
 	}
 	if fake.lastText != "dir\r" || !fake.lastNoPaste {
 		t.Fatalf("unexpected send: %#v", fake)
+	}
+}
+
+func TestSessionsIncludeLastInputSummary(t *testing.T) {
+	srv, _ := testServer(t)
+	body := bytes.NewBufferString(`{"text":"12345678901234567890abcdef","noPaste":true}`)
+	sendReq := httptest.NewRequest(http.MethodPost, "/api/instances/main/panes/3/send", body)
+	sendReq.Header.Set("Authorization", "Bearer secret")
+	sendRec := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(sendRec, sendReq)
+	if sendRec.Code != http.StatusOK {
+		t.Fatalf("send status = %d body = %s", sendRec.Code, sendRec.Body.String())
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/instances/main/sessions", nil)
+	req.Header.Set("Authorization", "Bearer secret")
+	rec := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("sessions status = %d body = %s", rec.Code, rec.Body.String())
+	}
+	var payload struct {
+		OK   bool `json:"ok"`
+		Data struct {
+			Panes []paneSession `json:"panes"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatal(err)
+	}
+	if !payload.OK || len(payload.Data.Panes) == 0 {
+		t.Fatalf("unexpected sessions payload: %#v", payload)
+	}
+	if payload.Data.Panes[0].LastInput != "12345678901234567890..." || payload.Data.Panes[0].LastInputAt == "" {
+		t.Fatalf("unexpected last input: %#v", payload.Data.Panes[0])
 	}
 }
 

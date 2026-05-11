@@ -224,6 +224,10 @@ func (s *Server) updateUILanguageFromSettings(r *http.Request) uiLang {
 }
 
 func pageShell(lang uiLang, titleKey, active, body, script string) string {
+	return pageShellWithChrome(lang, titleKey, active, body, script, true)
+}
+
+func pageShellWithChrome(lang uiLang, titleKey, active, body, script string, chrome bool) string {
 	nav := func(id, href, label string) string {
 		class := ""
 		if id == active {
@@ -232,6 +236,13 @@ func pageShell(lang uiLang, titleKey, active, body, script string) string {
 		return fmt.Sprintf(`<a%s href="%s">%s</a>`, class, href, label)
 	}
 	title := lang.t(titleKey)
+	header := ""
+	if chrome {
+		header = `<header class="topbar">
+  <a class="brand" href="/pairing"><img src="/assets/easycodex.svg" alt=""><span>EasyCodex</span></a>
+  <nav>` + nav("pairing", "/pairing", html.EscapeString(lang.t("navPairing"))) + nav("connections", "/connections", html.EscapeString(lang.t("connections"))) + nav("settings", "/settings", html.EscapeString(lang.t("settings"))) + nav("status", "/status", html.EscapeString(lang.t("status"))) + `<span class="version-badge">v` + html.EscapeString(AppVersion) + `</span><a class="github-link" href="https://github.com/laomoi-cpu/EasyCodex" target="_blank" rel="noreferrer">` + html.EscapeString(lang.t("github")) + `</a></nav>
+</header>`
+	}
 	return `<!doctype html>
 <html lang="` + html.EscapeString(string(lang)) + `">
 <head>
@@ -242,10 +253,7 @@ func pageShell(lang uiLang, titleKey, active, body, script string) string {
 <style>` + consoleCSS() + `</style>
 </head>
 <body class="page-` + html.EscapeString(active) + `">
-<header class="topbar">
-  <a class="brand" href="/pairing"><img src="/assets/easycodex.svg" alt=""><span>EasyCodex</span></a>
-  <nav>` + nav("pairing", "/pairing", html.EscapeString(lang.t("navPairing"))) + nav("connections", "/connections", html.EscapeString(lang.t("connections"))) + nav("settings", "/settings", html.EscapeString(lang.t("settings"))) + nav("status", "/status", html.EscapeString(lang.t("status"))) + `<span class="version-badge">v` + html.EscapeString(AppVersion) + `</span><a class="github-link" href="https://github.com/laomoi-cpu/EasyCodex" target="_blank" rel="noreferrer">` + html.EscapeString(lang.t("github")) + `</a></nav>
-</header>
+` + header + `
 <main>` + body + `</main>
 ` + script + `
 </body>
@@ -414,7 +422,7 @@ func terminalPageHTML(lang uiLang) string {
       </div>
       <form id="sendForm" class="send-row">
         <input id="commandInput" autocomplete="off" placeholder="%s">
-        <button id="toggleKeys" type="button" class="secondary">⌘</button>
+        <button id="toggleKeys" type="button" class="secondary">Keys</button>
         <button type="submit">%s</button>
       </form>
     </section>
@@ -463,7 +471,7 @@ func terminalPageHTML(lang uiLang) string {
 		html.EscapeString(lang.t("cancel")),
 		html.EscapeString(lang.t("save")))
 	script := `<script>` + terminalJS(lang) + `</script>`
-	return pageShell(lang, "terminal", "terminal", body, script)
+	return pageShellWithChrome(lang, "terminal", "terminal", body, script, false)
 }
 
 func settingsPageHTML(lang uiLang) string {
@@ -585,6 +593,7 @@ main{max-width:1180px;margin:0 auto;padding:28px}.hero{display:flex;justify-cont
 .panel-title-row{display:flex;align-items:center;justify-content:space-between;gap:12px}.instance-row{display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:10px;align-items:end;margin-top:10px}.choice-list{display:grid;gap:10px}.choice{display:flex;align-items:center;gap:10px;padding:10px;border:1px solid var(--line);border-radius:7px}.choice input{width:auto}.actionbar{grid-column:1/-1;display:flex;justify-content:flex-end;gap:10px;padding:14px 0 4px}
 button{border:0;border-radius:7px;background:var(--accent);color:#fff;font-weight:700;padding:10px 16px;cursor:pointer}button:hover{filter:brightness(.96)}button.secondary{background:#fff;color:#344054;border:1px solid #cfd6df}.remove{background:#fff4ed;color:#b54708;border:1px solid #fed7aa}.status-card{padding:16px;min-width:220px}.status-card.muted{color:var(--muted)}.status-dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:#12b76a;margin-right:8px}.status-card small{display:block;color:var(--muted);margin-top:4px}.kv{display:grid;grid-template-columns:145px minmax(0,1fr);gap:10px;margin:0}.kv dt{color:var(--muted)}.kv dd{margin:0}
 .pair-section{margin-top:16px}.pair-section h2{margin-bottom:16px}.terminal-page{display:grid;gap:16px}.terminal-connect{display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:22px;align-items:end}.connect-form{display:grid;gap:12px}.terminal-app{display:grid;grid-template-columns:280px minmax(0,1fr);gap:14px;height:calc(100vh - 122px);min-height:620px}.terminal-sidebar,.terminal-workbench{background:#fff;border:1px solid var(--line);border-radius:8px;box-shadow:var(--shadow);min-height:0}.terminal-sidebar{display:flex;flex-direction:column;padding:12px}.terminal-toolbar{display:grid;grid-template-columns:48px 1fr;gap:8px;margin-bottom:10px}.pane-list{display:grid;gap:8px;overflow:auto}.pane-item{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center;padding:9px;border:1px solid var(--line);border-radius:7px;background:#f8fafc;text-align:left;color:#18212f}.pane-item.active{background:#dbeafe;border-color:#93c5fd}.pane-item.selected{outline:2px solid #2563eb}.pane-main{display:block;min-width:0}.pane-title{display:block;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.pane-meta{display:block;color:var(--muted);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.pane-menu{padding:7px 9px}.terminal-workbench{display:grid;grid-template-rows:auto minmax(0,1fr) auto auto;padding:12px;gap:10px}.terminal-statusbar{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px}.status-pill{background:#e5e7eb;color:#374151;border:1px solid #d1d5db}.status-pill.ok{background:#d1fae5;color:#065f46;border-color:#86efac}.status-pill.work{background:#dbeafe;color:#1d4ed8;border-color:#93c5fd}.status-pill.err{background:#fee2e2;color:#991b1b;border-color:#fca5a5}.terminal-output{margin:0;overflow:auto;background:#0b1220;color:#e6edf3;border-radius:8px;padding:14px;font:13px/1.45 Consolas,"Cascadia Mono",monospace;white-space:pre-wrap;word-break:break-word}.send-row{display:grid;grid-template-columns:minmax(0,1fr) 54px 92px;gap:8px}.send-row input{height:44px}.key-panel{display:grid;grid-template-columns:repeat(9,minmax(0,1fr));gap:6px}.key-panel[hidden]{display:none!important}.key-panel button{padding:7px 6px;font-size:12px}.pane-dialog{border:1px solid var(--line);border-radius:8px;box-shadow:var(--shadow);max-width:560px;width:calc(100% - 28px);padding:18px}.pane-dialog h2{margin:0 0 14px}.dialog-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:16px}.danger{background:#fee2e2!important;color:#991b1b!important;border:1px solid #fca5a5!important}
+.pane-last{display:block;color:#0f8b8d;font-size:12px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.page-terminal{background:#0b1220;overflow:hidden}.page-terminal .topbar{display:none}.page-terminal main{max-width:none;height:100dvh;padding:12px;background:#0b1220}.page-terminal .terminal-page{height:100%;display:block}.page-terminal .terminal-app{height:calc(100dvh - 24px);min-height:0;grid-template-columns:320px minmax(0,1fr);gap:10px}.page-terminal .terminal-sidebar{background:#111827;border-color:#263244;box-shadow:none}.page-terminal .terminal-toolbar{grid-template-columns:40px 1fr}.page-terminal .pane-list{gap:7px}.page-terminal .pane-item{background:#182235;border-color:#263244;color:#e5e7eb;padding:10px;border-radius:7px}.page-terminal .pane-item.active{background:#12313d;border-color:#0f8b8d}.page-terminal .pane-item.selected{outline:2px solid #38bdf8}.page-terminal .pane-title{color:#f8fafc}.page-terminal .pane-meta{color:#94a3b8}.page-terminal .pane-last{color:#67e8f9}.page-terminal .terminal-workbench{border:0;box-shadow:none;background:#0b1220;padding:0}.page-terminal .terminal-output{border:1px solid #263244;border-radius:7px}.page-terminal .terminal-statusbar{grid-template-columns:minmax(0,1fr) 86px}.page-terminal .terminal-connect{min-height:100dvh;border:0;box-shadow:none}
 @media(max-width:760px){.topbar{padding:0 14px}.brand span{display:none}nav{gap:2px}nav a{padding:7px 8px;font-size:12px}main{padding:12px}.hero{display:block}.hero-mark{display:none}.settings-layout,.panel-grid.two{grid-template-columns:1fr}.field-grid{grid-template-columns:1fr}.pair-card{grid-template-columns:1fr}.instance-row{grid-template-columns:1fr}.actionbar{position:sticky;bottom:0;background:var(--bg);padding:12px 0}.test-row{grid-template-columns:1fr}.terminal-connect{grid-template-columns:1fr}.terminal-app{grid-template-columns:1fr;height:calc(100vh - 88px);min-height:0}.terminal-sidebar{max-height:128px;padding:8px}.pane-list{display:flex;overflow:auto}.pane-item{min-width:180px}.terminal-workbench{min-height:0}.terminal-output{font-size:12px;padding:10px}.send-row{grid-template-columns:minmax(0,1fr) 48px 74px}.key-panel{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media(max-width:760px){.page-terminal{background:#0b1220;overflow:auto}.page-terminal .topbar{display:none}.page-terminal main{max-width:none;min-height:100dvh;padding:0;background:#0b1220}.page-terminal .terminal-page{min-height:100dvh;display:block}.page-terminal .terminal-connect{min-height:100dvh;display:grid;grid-template-columns:1fr;align-content:center;border:0;border-radius:0;box-shadow:none;padding:18px;background:#f8fafc}.page-terminal .terminal-connect h1{font-size:24px}.page-terminal .terminal-connect .lead{font-size:13px}.page-terminal .terminal-app{min-height:100dvh;display:flex;flex-direction:column;gap:0;background:#0b1220}.page-terminal .terminal-sidebar{border:0;border-radius:0;box-shadow:none;max-height:none;min-height:0;padding:6px;background:#f8fafc;display:grid;grid-template-columns:auto minmax(0,1fr);gap:6px;align-items:center}.page-terminal .terminal-toolbar{display:flex;gap:5px;margin:0;min-width:max-content}.page-terminal .terminal-toolbar button{height:30px;padding:0 8px;font-size:11px;flex:0 0 auto}.page-terminal #newSession{width:32px;padding:0}.page-terminal #refreshSessions{width:58px;padding:0}.page-terminal .pane-list{display:flex;gap:5px;min-width:0;overflow-x:auto;overflow-y:hidden;padding:1px 2px 3px;scrollbar-width:thin;-webkit-overflow-scrolling:touch}.page-terminal .pane-item{min-width:118px;max-width:160px;padding:5px 7px;border-radius:7px;flex:0 0 auto}.page-terminal .pane-title{font-size:11px}.page-terminal .pane-meta{display:none}.page-terminal .pane-menu{padding:2px 4px}.page-terminal .terminal-workbench{flex:1;min-height:0;border:0;border-radius:0;box-shadow:none;display:flex;flex-direction:column;gap:6px;padding:7px;background:#0b1220}.page-terminal .terminal-statusbar{display:grid;grid-template-columns:minmax(0,1fr) 40px;gap:6px;order:0}.page-terminal .terminal-statusbar button{height:30px;padding:0 8px;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.page-terminal .terminal-output{min-height:62dvh;max-height:none;border-radius:0;padding:10px;font-size:12px;line-height:1.42;background:#0b1220;overflow:auto;flex:1}.page-terminal .key-panel{grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;background:#111827;padding:7px;border-radius:7px;order:2}.page-terminal .key-panel button{height:30px;padding:0 4px;font-size:11px}.page-terminal .send-row{position:sticky;bottom:0;z-index:4;grid-template-columns:minmax(0,1fr) 42px 58px;gap:6px;order:3;background:#0b1220;padding:6px 0 7px}.page-terminal .send-row input{height:42px;border-radius:7px;font-size:14px}.page-terminal .send-row button{height:42px;padding:0 8px;font-size:12px}.page-terminal .pane-dialog{width:calc(100% - 18px);padding:14px}}`
 }
@@ -756,14 +765,18 @@ function renderPanes(){
     const title = document.createElement('span');
     title.className = 'pane-title';
     title.textContent = (pane.isActive ? '* ' : '') + pane.paneId + ' ' + safeTitle(pane);
+    const last = document.createElement('span');
+    last.className = 'pane-last';
+    last.textContent = pane.lastInput ? i18n.lastInputPrefix + pane.lastInput : i18n.noLastInput;
     const meta = document.createElement('span');
     meta.className = 'pane-meta';
     meta.textContent = displayCwd(pane.cwd);
     main.appendChild(title);
+    main.appendChild(last);
     main.appendChild(meta);
     const menu = document.createElement('span');
     menu.className = 'pane-menu';
-    menu.textContent = '⋯';
+    menu.textContent = '...';
     row.appendChild(main);
     row.appendChild(menu);
     row.onclick = event => {

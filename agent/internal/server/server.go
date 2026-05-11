@@ -41,9 +41,15 @@ type Server struct {
 	wezterm    WezTerm
 	instances  map[string]config.Instance
 	clients    map[string]clientConnection
+	paneInputs map[string]paneInput
 	restart    func()
 	updateJob  updateJobStatus
 	logger     *slog.Logger
+}
+
+type paneInput struct {
+	Text      string
+	UpdatedAt time.Time
 }
 
 type pairingResponse struct {
@@ -177,6 +183,8 @@ type paneSession struct {
 	TabID            int             `json:"tabId"`
 	Title            string          `json:"title"`
 	CWD              string          `json:"cwd"`
+	LastInput        string          `json:"lastInput,omitempty"`
+	LastInputAt      string          `json:"lastInputAt,omitempty"`
 	Workspace        string          `json:"workspace"`
 	IsActive         bool            `json:"isActive"`
 	IsZoomed         bool            `json:"isZoomed"`
@@ -216,7 +224,7 @@ func NewWithConfigPath(cfg config.Config, configPath string, wezterm WezTerm, lo
 	for _, instance := range cfg.Instances {
 		instances[instance.ID] = instance
 	}
-	return &Server{cfg: cfg, configPath: configPath, wezterm: wezterm, instances: instances, clients: map[string]clientConnection{}, logger: logger}, nil
+	return &Server{cfg: cfg, configPath: configPath, wezterm: wezterm, instances: instances, clients: map[string]clientConnection{}, paneInputs: map[string]paneInput{}, logger: logger}, nil
 }
 
 func (s *Server) Handler() http.Handler {
@@ -409,6 +417,7 @@ func (s *Server) sessions(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadGateway, fmt.Errorf("invalid wezterm list json: %w", err))
 		return
 	}
+	s.attachPaneInputs(instance.ID, &tree)
 	writeOK(w, http.StatusOK, tree)
 }
 
@@ -511,6 +520,7 @@ func (s *Server) sendText(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusBadGateway, err)
 			return
 		}
+		s.recordPaneInput(instance.ID, paneID, text)
 	}
 	if body.Enter {
 		if text != "" {
@@ -598,6 +608,62 @@ func (s *Server) activePaneID(ctx context.Context, instance config.Instance) (st
 		return tree.Panes[0].PaneID, nil
 	}
 	return "", errors.New("no panes available for spawn")
+}
+
+func (s *Server) recordPaneInput(instanceID, paneID, text string) {
+	summary := summarizePaneInput(text, 20)
+	if summary == "" {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.paneInputs[paneInputKey(instanceID, paneID)] = paneInput{Text: summary, UpdatedAt: time.Now()}
+}
+
+func (s *Server) attachPaneInputs(instanceID string, tree *sessionTree) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for i := range tree.Panes {
+		input, ok := s.paneInputs[paneInputKey(instanceID, tree.Panes[i].PaneID)]
+		if ok {
+			tree.Panes[i].LastInput = input.Text
+			tree.Panes[i].LastInputAt = input.UpdatedAt.Format(time.RFC3339Nano)
+		}
+	}
+	for wIndex := range tree.Windows {
+		for tIndex := range tree.Windows[wIndex].Tabs {
+			for pIndex := range tree.Windows[wIndex].Tabs[tIndex].Panes {
+				pane := &tree.Windows[wIndex].Tabs[tIndex].Panes[pIndex]
+				input, ok := s.paneInputs[paneInputKey(instanceID, pane.PaneID)]
+				if ok {
+					pane.LastInput = input.Text
+					pane.LastInputAt = input.UpdatedAt.Format(time.RFC3339Nano)
+				}
+			}
+		}
+	}
+}
+
+func paneInputKey(instanceID, paneID string) string {
+	return instanceID + "\x00" + paneID
+}
+
+func summarizePaneInput(text string, limit int) string {
+	text = strings.TrimSpace(strings.Map(func(r rune) rune {
+		if r < 32 || r == 127 {
+			return ' '
+		}
+		return r
+	}, text))
+	text = strings.Join(strings.Fields(text), " ")
+	if text == "" {
+		return ""
+	}
+	runes := []rune(text)
+	if limit > 0 && len(runes) > limit {
+		return string(runes[:limit]) + "..."
+	}
+	return text
 }
 
 func (s *Server) instance(w http.ResponseWriter, r *http.Request) (config.Instance, bool) {
