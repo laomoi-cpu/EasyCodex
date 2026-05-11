@@ -239,22 +239,7 @@ public class MainActivity extends Activity {
                     fileChooserCallback.onReceiveValue(null);
                 }
                 fileChooserCallback = filePathCallback;
-                Intent intent;
-                try {
-                    intent = fileChooserParams.createIntent();
-                } catch (Exception ex) {
-                    intent = new Intent(Intent.ACTION_GET_CONTENT);
-                    intent.addCategory(Intent.CATEGORY_OPENABLE);
-                    intent.setType("*/*");
-                    intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
-                }
-                try {
-                    startActivityForResult(intent, REQUEST_FILE_CHOOSER);
-                } catch (Exception ex) {
-                    fileChooserCallback = null;
-                    setStatus("无法打开文件选择器: " + ex.getMessage(), "err");
-                    return false;
-                }
+                showAttachmentChooser(fileChooserParams);
                 return true;
             }
         });
@@ -318,6 +303,74 @@ public class MainActivity extends Activity {
             return;
         }
         webView.evaluateJavascript("(function(){var s=document.getElementById('easycodex-android-css');if(!s){s=document.createElement('style');s.id='easycodex-android-css';document.head.appendChild(s);}s.textContent='.terminal-statusbar{display:none!important;} .terminal-output{padding-top:10px!important;}';})();", null);
+    }
+
+    private void showAttachmentChooser(WebChromeClient.FileChooserParams fileChooserParams) {
+        final boolean[] launchingPicker = {false};
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle("添加附件")
+                .setMessage("选择文件作为附件，或取消本次添加。")
+                .setNegativeButton("取消", (dialogInterface, which) -> cancelFileChooser())
+                .setPositiveButton("选择文件", (dialogInterface, which) -> {
+                    launchingPicker[0] = true;
+                    launchFileChooser(fileChooserParams);
+                })
+                .create();
+        dialog.setOnCancelListener(dialogInterface -> cancelFileChooser());
+        dialog.setOnDismissListener(dialogInterface -> {
+            if (!launchingPicker[0] && fileChooserCallback != null) {
+                cancelFileChooser();
+            }
+        });
+        dialog.show();
+    }
+
+    private void launchFileChooser(WebChromeClient.FileChooserParams fileChooserParams) {
+        Intent intent = buildFileChooserIntent(fileChooserParams);
+        try {
+            startActivityForResult(Intent.createChooser(intent, "选择附件"), REQUEST_FILE_CHOOSER);
+        } catch (Exception ex) {
+            cancelFileChooser();
+            setStatus("无法打开文件选择器: " + ex.getMessage(), "err");
+        }
+    }
+
+    private Intent buildFileChooserIntent(WebChromeClient.FileChooserParams fileChooserParams) {
+        Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+        intent.addCategory(Intent.CATEGORY_OPENABLE);
+        intent.setType("*/*");
+        intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
+        intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
+            intent.addFlags(Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP && fileChooserParams != null) {
+            String[] acceptTypes = fileChooserParams.getAcceptTypes();
+            List<String> filtered = new ArrayList<>();
+            if (acceptTypes != null) {
+                for (String acceptType : acceptTypes) {
+                    if (acceptType != null && !acceptType.trim().isEmpty()) {
+                        filtered.add(acceptType.trim());
+                    }
+                }
+            }
+            if (filtered.size() == 1) {
+                intent.setType(filtered.get(0));
+            } else if (filtered.size() > 1) {
+                intent.putExtra(Intent.EXTRA_MIME_TYPES, filtered.toArray(new String[0]));
+            }
+            if (fileChooserParams.getMode() == WebChromeClient.FileChooserParams.MODE_OPEN) {
+                intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, false);
+            }
+        }
+        return intent;
+    }
+
+    private void cancelFileChooser() {
+        if (fileChooserCallback != null) {
+            fileChooserCallback.onReceiveValue(null);
+            fileChooserCallback = null;
+        }
     }
 
     private String terminalUrl() {
