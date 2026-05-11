@@ -270,7 +270,10 @@ func TestPairingPageIncludesPublicBaseURL(t *testing.T) {
 	if !strings.Contains(body, "http://100.64.1.2:8765") || !strings.Contains(body, "Public") {
 		t.Fatalf("expected public pairing card: %s", body)
 	}
-	if !strings.Contains(body, "/terminal#baseUrl=") || !strings.Contains(body, "PC / Mobile Browser") {
+	if !strings.Contains(body, "/terminal#baseUrl=") ||
+		!strings.Contains(body, "PC / 手机浏览器访问") ||
+		!strings.Contains(body, `class="link-field"`) ||
+		!strings.Contains(body, "浏览器扫码打开终端") {
 		t.Fatalf("expected browser terminal pairing card: %s", body)
 	}
 }

@@ -94,9 +94,11 @@ func (s *Server) writePairingConsole(w http.ResponseWriter, baseURLs []string) {
   <div class="qr-frame"><img src="%s" alt="Pairing QR"></div>
   <div class="pair-meta">
     <span class="badge">%s</span>
-    <label>Phone Base URL</label>
+    <h3>Android App 扫码配对</h3>
+    <p class="pair-hint">这个二维码给 EasyCodex Android App 使用。</p>
+    <label>手机连接地址</label>
     <code>%s</code>
-    <label>Pair Link</label>
+    <label>App 配对链接</label>
     <code>%s</code>
   </div>
 </article>`, html.EscapeString(qrURL), networkBadge(baseURL), html.EscapeString(baseURL), html.EscapeString(deepLink))
@@ -108,25 +110,27 @@ func (s *Server) writePairingConsole(w http.ResponseWriter, baseURLs []string) {
   <div class="qr-frame"><img src="%s" alt="Browser Terminal QR"></div>
   <div class="pair-meta">
     <span class="badge">%s</span>
-    <label>Browser Terminal URL</label>
-    <code>%s</code>
-    <label>Open Link</label>
+    <h3>浏览器扫码打开终端</h3>
+    <p class="pair-hint">这个二维码给 PC 浏览器或手机浏览器使用，会自动带上 Token。</p>
+    <label>PC 浏览器访问地址</label>
+    <a class="link-field" href="%s">%s</a>
+    <label>扫码完整链接</label>
     <code>%s</code>
   </div>
-</article>`, html.EscapeString(browserQRURL), networkBadge(baseURL), html.EscapeString(baseURL+"/terminal"), html.EscapeString(browserURL))
+</article>`, html.EscapeString(browserQRURL), networkBadge(baseURL), html.EscapeString(browserURL), html.EscapeString(baseURL+"/terminal"), html.EscapeString(browserURL))
 	}
 
 	body := fmt.Sprintf(`
 <section class="hero">
   <div>
-    <p class="eyebrow">Android Pairing</p>
-    <h1>Scan once, then control Codex from your phone.</h1>
-    <p class="lead">Use the QR code that matches the phone network. For Tailscale or another reachable public address, fill Public Base URL in Settings and scan the Public QR.</p>
+    <p class="eyebrow">EasyCodex Pairing</p>
+    <h1>扫码连接手机 App，也可以直接用浏览器打开终端。</h1>
+    <p class="lead">Android App 请扫 App 配对二维码；PC 浏览器或手机浏览器请扫浏览器终端二维码。公网或 Tailscale 地址可在 Settings 里配置 Public Base URL。</p>
   </div>
   <img class="hero-mark" src="/assets/easycodex.svg" alt="">
 </section>
-<section class="panel pair-section"><h2>Android APK</h2><div class="pair-grid">%s</div></section>
-<section class="panel pair-section"><h2>PC / Mobile Browser</h2><div class="pair-grid">%s</div></section>`, cards.String(), browserCards.String())
+<section class="panel pair-section"><h2>Android App 配对二维码</h2><div class="pair-grid">%s</div></section>
+<section class="panel pair-section"><h2>PC / 手机浏览器访问</h2><div class="pair-grid">%s</div></section>`, cards.String(), browserCards.String())
 	writeHTML(w, pageShell("Pairing", "pairing", body, ""))
 }
 
@@ -295,7 +299,7 @@ func consoleCSS() string {
 nav{display:flex;gap:6px}nav a{color:#475467;text-decoration:none;padding:8px 12px;border-radius:7px}nav a.active,nav a:hover{background:#e7f4f4;color:#075f63}
 main{max-width:1180px;margin:0 auto;padding:28px}.hero{display:flex;justify-content:space-between;align-items:center;gap:28px;margin-bottom:22px}.hero.compact{align-items:flex-end}.eyebrow{text-transform:uppercase;letter-spacing:.08em;color:var(--accent);font-weight:700;font-size:12px;margin:0 0 6px}.hero h1{margin:0;max-width:780px;font-size:34px;line-height:1.12;letter-spacing:0}.lead{max-width:820px;color:var(--muted);font-size:16px;margin:10px 0 0}.hero-mark{width:126px;height:126px;flex:0 0 auto}
 .panel,.pair-card,.status-card{background:var(--panel);border:1px solid var(--line);border-radius:8px;box-shadow:var(--shadow)}.panel{padding:22px}.panel h2{margin:0 0 16px;font-size:17px}.panel-grid{display:grid;gap:16px}.panel-grid.two{grid-template-columns:repeat(2,minmax(0,1fr))}
-.pair-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:16px}.pair-card{display:grid;grid-template-columns:190px minmax(0,1fr);gap:18px;padding:18px}.qr-frame{display:grid;place-items:center;border:1px solid var(--line);background:#fafafa;border-radius:8px;aspect-ratio:1}.qr-frame img{width:166px;height:166px}.pair-meta{min-width:0}.pair-meta label{display:block;color:var(--muted);font-size:12px;margin:12px 0 4px}.pair-meta code,.kv dd{display:block;word-break:break-all;background:#f5f7fa;border:1px solid #e4e7ec;border-radius:6px;padding:9px;color:#253244}
+.pair-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:16px}.pair-card{display:grid;grid-template-columns:190px minmax(0,1fr);gap:18px;padding:18px}.qr-frame{display:grid;place-items:center;border:1px solid var(--line);background:#fafafa;border-radius:8px;aspect-ratio:1}.qr-frame img{width:166px;height:166px}.pair-meta{min-width:0}.pair-meta h3{margin:2px 0 6px;font-size:18px}.pair-hint{margin:0 0 10px;color:var(--muted);font-size:13px;line-height:1.5}.pair-meta label{display:block;color:var(--muted);font-size:12px;margin:12px 0 4px}.pair-meta code,.kv dd,.link-field{display:block;word-break:break-all;background:#f5f7fa;border:1px solid #e4e7ec;border-radius:6px;padding:9px;color:#253244}.link-field{color:#1d4ed8;text-decoration:none;font-weight:700}.link-field:hover{text-decoration:underline}
 .badge{display:inline-flex;align-items:center;height:24px;padding:0 9px;border-radius:999px;background:#e7f4f4;color:#075f63;font-weight:700;font-size:12px}.settings-layout{display:grid;grid-template-columns:1fr 1fr;gap:16px}.settings-layout .panel:nth-child(2),.settings-layout .panel:nth-child(3){grid-column:span 1}.field-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}label span{display:block;color:#344054;font-weight:600;margin-bottom:6px}input,textarea,select{width:100%;border:1px solid #cfd6df;border-radius:7px;padding:10px 11px;background:#fff;color:var(--text);font-size:14px}textarea{resize:vertical}.check-row{display:flex;gap:10px;align-items:center;margin-top:16px}.check-row input{width:auto}.check-row span{margin:0;font-weight:500}
 .panel-title-row{display:flex;align-items:center;justify-content:space-between;gap:12px}.instance-row{display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:10px;align-items:end;margin-top:10px}.choice-list{display:grid;gap:10px}.choice{display:flex;align-items:center;gap:10px;padding:10px;border:1px solid var(--line);border-radius:7px}.choice input{width:auto}.actionbar{grid-column:1/-1;display:flex;justify-content:flex-end;gap:10px;padding:14px 0 4px}
 button{border:0;border-radius:7px;background:var(--accent);color:#fff;font-weight:700;padding:10px 16px;cursor:pointer}button:hover{filter:brightness(.96)}button.secondary{background:#fff;color:#344054;border:1px solid #cfd6df}.remove{background:#fff4ed;color:#b54708;border:1px solid #fed7aa}.status-card{padding:16px;min-width:220px}.status-card.muted{color:var(--muted)}.status-dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:#12b76a;margin-right:8px}.status-card small{display:block;color:var(--muted);margin-top:4px}.kv{display:grid;grid-template-columns:145px minmax(0,1fr);gap:10px;margin:0}.kv dt{color:var(--muted)}.kv dd{margin:0}
