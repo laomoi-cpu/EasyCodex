@@ -36,7 +36,7 @@ EasyCodex 是一个面向 Codex 用户的 Windows 远程终端工作台。
 
 当前支持：
 
-- Windows PC Agent
+- Windows PC
 - Windows 上的 WezTerm GUI
 - PC 浏览器终端
 - 手机浏览器终端
