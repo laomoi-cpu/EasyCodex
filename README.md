@@ -14,6 +14,9 @@ EasyCodex 是一个给 Codex 用户准备的 Windows 远程终端工作台。
 - **扫码即可连接手机**  
   PC 上会提供二维码。手机浏览器或 Android App 扫码后，会自动带上服务器地址和 Token，不需要手动复制一长串配置。
 
+- **首次启动更安全**  
+  第一次启动 Agent 时会自动生成随机 Token 并写入配置文件，不再使用固定默认 Token。
+
 - **多端入口统一**  
   同一套 Codex 会话可以从多个入口访问：
   - Windows PC 上的 WezTerm GUI

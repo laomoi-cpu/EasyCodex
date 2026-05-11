@@ -84,7 +84,7 @@ public class MainActivity extends Activity {
     private boolean keyPanelExpanded = false;
 
     private String baseUrl = "http://127.0.0.1:8765";
-    private String token = "easycodex-dev-token";
+    private String token = "";
     private String instanceId = "main";
     private String defaultInstanceId = "main";
     private String defaultCwd = "D:\\mgame";

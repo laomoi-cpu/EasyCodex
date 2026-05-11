@@ -52,6 +52,13 @@ func main() {
 	if displayConfigPath == "" {
 		displayConfigPath = filepath.Join(cfg.Root, "agent", "config.json")
 	}
+	if initialized, err := initializeMissingConfig(displayConfigPath, cfg, found); err != nil {
+		logger.Error("failed to initialize config", "config", displayConfigPath, "error", err)
+		os.Exit(1)
+	} else if initialized {
+		logger.Info("initialized config with generated token", "config", displayConfigPath)
+		found = true
+	}
 	if *tokenOverride == "" {
 		if changed, err := regenerateStartupToken(displayConfigPath, &cfg); err != nil {
 			logger.Error("failed to regenerate startup token", "error", err)
@@ -126,6 +133,16 @@ func main() {
 			os.Exit(1)
 		}
 	}
+}
+
+func initializeMissingConfig(configPath string, cfg config.Config, found bool) (bool, error) {
+	if found {
+		return false, nil
+	}
+	if err := config.Save(configPath, cfg); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 func regenerateStartupToken(configPath string, cfg *config.Config) (bool, error) {

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"io"
 	"log/slog"
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -53,6 +54,49 @@ func TestRegenerateStartupTokenSkipsWhenDisabled(t *testing.T) {
 	}
 	if changed || cfg.Token != "stable-token" {
 		t.Fatalf("unexpected regenerate result: changed=%v token=%q", changed, cfg.Token)
+	}
+}
+
+func TestInitializeMissingConfigSavesGeneratedToken(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+	cfg, found, err := config.Load(path)
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+	if found {
+		t.Fatalf("expected missing config")
+	}
+
+	initialized, err := initializeMissingConfig(path, cfg, found)
+	if err != nil {
+		t.Fatalf("initializeMissingConfig returned error: %v", err)
+	}
+	if !initialized {
+		t.Fatalf("expected config initialization")
+	}
+	loaded, found, err := config.Load(path)
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+	if !found || loaded.Token == "" || loaded.Token != cfg.Token {
+		t.Fatalf("unexpected initialized config: found=%v cfg=%#v originalToken=%q", found, loaded, cfg.Token)
+	}
+}
+
+func TestInitializeMissingConfigSkipsExistingConfig(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+	cfg := config.Defaults()
+	cfg.Token = "stable-token"
+
+	initialized, err := initializeMissingConfig(path, cfg, true)
+	if err != nil {
+		t.Fatalf("initializeMissingConfig returned error: %v", err)
+	}
+	if initialized {
+		t.Fatalf("did not expect initialization for existing config")
+	}
+	if _, err := os.Stat(path); err == nil {
+		t.Fatalf("did not expect config file to be written")
 	}
 }
 
