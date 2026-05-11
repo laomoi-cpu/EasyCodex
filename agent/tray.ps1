@@ -62,9 +62,12 @@ $statusItem.Add_Click({
 
 [void]$menu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator))
 
-$exitItem = New-Object System.Windows.Forms.ToolStripMenuItem('Exit Tray')
+$exitItem = New-Object System.Windows.Forms.ToolStripMenuItem('Exit EasyCodex')
 $exitItem.Add_Click({
     $notify.Visible = $false
+    if ($AgentPid -gt 0) {
+        Stop-Process -Id $AgentPid -Force -ErrorAction SilentlyContinue
+    }
     [System.Windows.Forms.Application]::Exit()
 })
 [void]$menu.Items.Add($exitItem)

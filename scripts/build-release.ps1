@@ -55,15 +55,29 @@ if (Test-Path -LiteralPath $agentTray) {
 
 if (-not $SkipAgent) {
     $agentExe = Join-Path $releaseDir "EasyCodex.exe"
+    $agentCmdDir = Join-Path $repoRoot "agent\cmd\easycodex-agent"
+    $iconPath = Join-Path $agentCmdDir "easycodex.ico"
+    $sysoPath = Join-Path $agentCmdDir "rsrc_windows_amd64.syso"
+    $setGoProxy = [string]::IsNullOrWhiteSpace($env:GOPROXY)
     Push-Location (Join-Path $repoRoot "agent")
     try {
         $env:GOOS = "windows"
         $env:GOARCH = "amd64"
+        if ($setGoProxy) {
+            $env:GOPROXY = "https://goproxy.cn,direct"
+        }
+        & (Join-Path $scriptDir "generate-easycodex-icon.ps1") -OutputPath $iconPath
+        go run github.com/akavel/rsrc@v0.10.2 -arch amd64 -ico $iconPath -o $sysoPath
         go build -trimpath -ldflags "-s -w -H windowsgui -X main.version=$Version" -o $agentExe .\cmd\easycodex-agent
     } finally {
         Pop-Location
+        Remove-Item -LiteralPath $iconPath -Force -ErrorAction SilentlyContinue
+        Remove-Item -LiteralPath $sysoPath -Force -ErrorAction SilentlyContinue
         Remove-Item Env:\GOOS -ErrorAction SilentlyContinue
         Remove-Item Env:\GOARCH -ErrorAction SilentlyContinue
+        if ($setGoProxy) {
+            Remove-Item Env:\GOPROXY -ErrorAction SilentlyContinue
+        }
     }
 }
 

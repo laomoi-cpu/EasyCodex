@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
@@ -27,6 +29,8 @@ import (
 
 var version = "dev"
 
+const releaseDownloadsURL = "https://github.com/laomoi-cpu/EasyCodex/releases/latest"
+
 func main() {
 	configPath := flag.String("config", "", "config file path")
 	listenOverride := flag.String("listen", "", "override listen address, for example 127.0.0.1:8765")
@@ -37,8 +41,7 @@ func main() {
 
 	cfg, found, err := config.Load(*configPath)
 	if err != nil {
-		logger.Error("failed to load config", "error", err)
-		os.Exit(1)
+		fatalStartup(logger, "Failed to load config", err)
 	}
 	if *listenOverride != "" {
 		cfg.Listen = *listenOverride
@@ -48,24 +51,30 @@ func main() {
 	}
 	config.Normalize(&cfg)
 	if err := config.Validate(cfg); err != nil {
-		logger.Error("invalid config", "error", err)
-		os.Exit(1)
+		fatalStartup(logger, "Invalid config", err)
+	}
+	logger, logFile := newLogger(cfg.Root)
+	if logFile != nil {
+		defer logFile.Close()
+	}
+	if err := validateInstallRoot(cfg.Root); err != nil {
+		logger.Error("incomplete EasyCodex package", "root", cfg.Root, "error", err)
+		openURL(releaseDownloadsURL, logger)
+		fatalStartup(logger, "Incomplete EasyCodex package", err)
 	}
 	displayConfigPath := *configPath
 	if displayConfigPath == "" {
 		displayConfigPath = filepath.Join(cfg.Root, "agent", "config.json")
 	}
 	if initialized, err := initializeMissingConfig(displayConfigPath, cfg, found); err != nil {
-		logger.Error("failed to initialize config", "config", displayConfigPath, "error", err)
-		os.Exit(1)
+		fatalStartup(logger, "Failed to initialize config", err)
 	} else if initialized {
 		logger.Info("initialized config with generated token", "config", displayConfigPath)
 		found = true
 	}
 	if *tokenOverride == "" {
 		if changed, err := regenerateStartupToken(displayConfigPath, &cfg); err != nil {
-			logger.Error("failed to regenerate startup token", "error", err)
-			os.Exit(1)
+			fatalStartup(logger, "Failed to regenerate startup token", err)
 		} else if changed {
 			logger.Info("regenerated startup token", "config", displayConfigPath)
 		}
@@ -76,14 +85,20 @@ func main() {
 	server.AppVersion = version
 	app, err := server.NewWithConfigPath(cfg, displayConfigPath, tracker, logger)
 	if err != nil {
-		logger.Error("failed to create server", "error", err)
-		os.Exit(1)
+		fatalStartup(logger, "Failed to create server", err)
 	}
 
 	httpServer := &http.Server{
 		Addr:              cfg.Listen,
 		Handler:           app.Handler(),
 		ReadHeaderTimeout: 5 * time.Second,
+	}
+	listener, err := net.Listen("tcp", cfg.Listen)
+	if err != nil {
+		if openExistingAgent(cfg.Listen, logger) {
+			return
+		}
+		fatalStartup(logger, "Failed to start EasyCodex Agent", fmt.Errorf("listen %s: %w", cfg.Listen, err))
 	}
 
 	fmt.Println("EasyCodex Agent started")
@@ -111,12 +126,13 @@ func main() {
 		fmt.Printf("Instance: %s (%s) class=%s\n", instance.ID, instance.Name, instance.Class)
 	}
 	startTrayHelper(logger, cfg, displayConfigPath)
+	openURL(network.LocalURL+"/settings", logger)
 	autoLaunchInstances(context.Background(), logger, tracker, cfg)
 	defer cleanupLaunchedGUI(logger, tracker, cfg)
 
 	errCh := make(chan error, 1)
 	go func() {
-		errCh <- httpServer.ListenAndServe()
+		errCh <- httpServer.Serve(listener)
 	}()
 
 	stop := make(chan os.Signal, 1)
@@ -127,17 +143,87 @@ func main() {
 		if err != nil && err != http.ErrServerClosed {
 			logger.Error("server exited unexpectedly", "error", err)
 			cleanupLaunchedGUI(logger, tracker, cfg)
-			os.Exit(1)
+			fatalStartup(logger, "EasyCodex Agent exited unexpectedly", err)
 		}
 	case <-stop:
 		logger.Info("stopping server")
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		if err := httpServer.Shutdown(ctx); err != nil {
-			logger.Error("failed to stop server", "error", err)
-			os.Exit(1)
+			fatalStartup(logger, "Failed to stop EasyCodex Agent", err)
 		}
 	}
+}
+
+func fatalStartup(logger *slog.Logger, title string, err error) {
+	if logger != nil {
+		logger.Error(title, "error", err)
+	}
+	showStartupError(title, err)
+	os.Exit(1)
+}
+
+func validateInstallRoot(root string) error {
+	required := []string{
+		filepath.Join(root, "bin", "wezterm.exe"),
+		filepath.Join(root, "bin", "wezterm-gui.exe"),
+		filepath.Join(root, "agent", "tray.ps1"),
+		filepath.Join(root, "wezterm-config", "wezterm.lua"),
+	}
+	for _, path := range required {
+		if _, err := os.Stat(path); err != nil {
+			return fmt.Errorf("missing required file %s: %w", path, err)
+		}
+	}
+	return nil
+}
+
+func newLogger(root string) (*slog.Logger, *os.File) {
+	logPath := filepath.Join(root, ".logs", "easycodex-agent.log")
+	if err := os.MkdirAll(filepath.Dir(logPath), 0755); err != nil {
+		return slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo})), nil
+	}
+	file, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600)
+	if err != nil {
+		return slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo})), nil
+	}
+	writer := io.MultiWriter(os.Stdout, file)
+	return slog.New(slog.NewTextHandler(writer, &slog.HandlerOptions{Level: slog.LevelInfo})), file
+}
+
+func openExistingAgent(listen string, logger *slog.Logger) bool {
+	url := netinfo.Inspect(listen).LocalURL
+	client := http.Client{Timeout: 1200 * time.Millisecond}
+	res, err := client.Get(url + "/api/health")
+	if err != nil {
+		return false
+	}
+	defer res.Body.Close()
+	var payload struct {
+		OK   bool `json:"ok"`
+		Data struct {
+			Service string `json:"service"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(res.Body).Decode(&payload); err != nil || !payload.OK || payload.Data.Service != "easycodex-agent" {
+		return false
+	}
+	settingsURL := url + "/settings"
+	logger.Info("agent already running, opening existing console", "url", settingsURL)
+	openURL(settingsURL, logger)
+	return true
+}
+
+func openURL(url string, logger *slog.Logger) {
+	if runtime.GOOS == "windows" {
+		cmd := exec.Command("rundll32.exe", "url.dll,FileProtocolHandler", url)
+		winproc.HideWindow(cmd)
+		if err := cmd.Start(); err != nil {
+			logger.Warn("failed to open url", "url", url, "error", err)
+		}
+		return
+	}
+	logger.Info("open this URL", "url", url)
 }
 
 func initializeMissingConfig(configPath string, cfg config.Config, found bool) (bool, error) {

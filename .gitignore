@@ -12,6 +12,8 @@ android/app/build/
 agent/bin/
 agent/dist/
 agent/*.exe
+agent/cmd/easycodex-agent/easycodex.ico
+agent/cmd/easycodex-agent/rsrc_windows_*.syso
 *.log
 *.tmp
 *.cache
