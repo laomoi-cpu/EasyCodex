@@ -297,6 +297,7 @@ func TestTerminalPageIsAvailableRemotely(t *testing.T) {
 		!strings.Contains(body, ".page-terminal .send-row{position:sticky") ||
 		!strings.Contains(body, ".key-panel[hidden]{display:none!important}") ||
 		!strings.Contains(body, "function setKeyPanel(show)") ||
+		!strings.Contains(body, "$('toggleKeys').onclick = () => setKeyPanel($('keyPanel').hidden)") ||
 		!strings.Contains(body, "snapshot?lines=180&escapes=1") {
 		t.Fatalf("unexpected terminal page: %s", body)
 	}

@@ -727,7 +727,7 @@ $('editConnection').onclick = () => { stopPolling(); showConnect(true); };
 $('refreshSessions').onclick = () => loadSessions().catch(err => setStatus(err.message, 'err'));
 $('newSession').onclick = () => spawnSession().catch(err => setStatus(err.message, 'err'));
 $('sendForm').addEventListener('submit', event => { event.preventDefault(); sendCommand(true).catch(err => setStatus(err.message, 'err')); });
-$('toggleKeys').onclick = () => setKeyPanel(!$('keyPanel').hidden);
+$('toggleKeys').onclick = () => setKeyPanel($('keyPanel').hidden);
 function setKeyPanel(show){
   $('keyPanel').hidden = !show;
   $('toggleKeys').textContent = show ? 'Hide' : 'Keys';
