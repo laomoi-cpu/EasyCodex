@@ -87,6 +87,23 @@ type settingsResponse struct {
 	RestartFields   []string      `json:"restartFields,omitempty"`
 }
 
+type networkTestTarget struct {
+	Label string `json:"label"`
+	URL   string `json:"url"`
+}
+
+type networkTestResult struct {
+	Label       string `json:"label"`
+	URL         string `json:"url"`
+	OK          bool   `json:"ok"`
+	Status      int    `json:"status,omitempty"`
+	LatencyMS   int64  `json:"latencyMs"`
+	Service     string `json:"service,omitempty"`
+	LANEnabled  *bool  `json:"lanEnabled,omitempty"`
+	Error       string `json:"error,omitempty"`
+	TestedAt    string `json:"testedAt"`
+}
+
 type clientConnection struct {
 	ID         string `json:"id"`
 	Kind       string `json:"kind"`
@@ -218,6 +235,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/config", s.auth(s.appConfig))
 	mux.HandleFunc("GET /api/settings", s.localOnly(s.settings))
 	mux.HandleFunc("GET /api/connections", s.localOnly(s.connections))
+	mux.HandleFunc("GET /api/network-tests", s.localOnly(s.networkTests))
 	mux.HandleFunc("GET /api/update/check", s.localOnly(s.checkUpdate))
 	mux.HandleFunc("GET /api/update/status", s.localOnly(s.updateStatus))
 	mux.HandleFunc("POST /api/update/apply", s.localOnly(s.applyUpdate))
@@ -660,6 +678,93 @@ func (s *Server) restartAgent(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) connections(w http.ResponseWriter, r *http.Request) {
 	writeOK(w, http.StatusOK, map[string]any{"connections": s.connectionSnapshot()})
+}
+
+func (s *Server) networkTests(w http.ResponseWriter, r *http.Request) {
+	targets := s.networkTestTargets()
+	results := make([]networkTestResult, len(targets))
+	var wg sync.WaitGroup
+	for i, target := range targets {
+		wg.Add(1)
+		go func(index int, target networkTestTarget) {
+			defer wg.Done()
+			results[index] = testNetworkTarget(r.Context(), target)
+		}(i, target)
+	}
+	wg.Wait()
+	writeOK(w, http.StatusOK, map[string]any{"targets": targets, "results": results})
+}
+
+func (s *Server) networkTestTargets() []networkTestTarget {
+	cfg := s.configSnapshot()
+	network := netinfo.Inspect(cfg.Listen)
+	targets := []networkTestTarget{{Label: "Local", URL: network.LocalURL}}
+	for _, lanURL := range network.LANURLs {
+		targets = append(targets, networkTestTarget{Label: "LAN", URL: lanURL})
+	}
+	if cfg.PublicBaseURL != "" {
+		targets = append(targets, networkTestTarget{Label: "Public", URL: cfg.PublicBaseURL})
+	}
+	seen := map[string]struct{}{}
+	deduped := make([]networkTestTarget, 0, len(targets))
+	for _, target := range targets {
+		target.URL = strings.TrimRight(strings.TrimSpace(target.URL), "/")
+		if target.URL == "" {
+			continue
+		}
+		key := strings.ToLower(target.URL)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		deduped = append(deduped, target)
+	}
+	return deduped
+}
+
+func testNetworkTarget(parent context.Context, target networkTestTarget) networkTestResult {
+	start := time.Now()
+	result := networkTestResult{
+		Label:    target.Label,
+		URL:      target.URL,
+		TestedAt: start.Format(time.RFC3339),
+	}
+	ctx, cancel := context.WithTimeout(parent, 2500*time.Millisecond)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, target.URL+"/api/health", nil)
+	if err != nil {
+		result.Error = err.Error()
+		return result
+	}
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("User-Agent", "EasyCodex-network-test")
+	res, err := updateHTTPClient.Do(req)
+	result.LatencyMS = time.Since(start).Milliseconds()
+	if err != nil {
+		result.Error = err.Error()
+		return result
+	}
+	defer res.Body.Close()
+	result.Status = res.StatusCode
+	var payload struct {
+		OK   bool `json:"ok"`
+		Data struct {
+			Service    string `json:"service"`
+			LANEnabled bool   `json:"lanEnabled"`
+		} `json:"data"`
+		Error string `json:"error"`
+	}
+	if err := json.NewDecoder(res.Body).Decode(&payload); err != nil {
+		result.Error = err.Error()
+		return result
+	}
+	result.OK = res.StatusCode >= 200 && res.StatusCode < 300 && payload.OK && payload.Data.Service == "easycodex-agent"
+	result.Service = payload.Data.Service
+	result.LANEnabled = &payload.Data.LANEnabled
+	if !result.OK && payload.Error != "" {
+		result.Error = payload.Error
+	}
+	return result
 }
 
 func (s *Server) saveSettings(w http.ResponseWriter, r *http.Request) {

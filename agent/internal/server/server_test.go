@@ -457,6 +457,54 @@ func TestConsoleNavOmitsTerminalAndIncludesConnections(t *testing.T) {
 	if !strings.Contains(body, `href="/connections">Connections`) {
 		t.Fatalf("connections link should be in console nav: %s", body)
 	}
+	if !strings.Contains(body, `id="runNetworkTests"`) ||
+		!strings.Contains(body, "/api/network-tests") ||
+		!strings.Contains(body, "HTTP Service Test") {
+		t.Fatalf("network test controls should be in status page: %s", body)
+	}
+}
+
+func TestNetworkTestsChecksHealthEndpoint(t *testing.T) {
+	health := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/health" {
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+		writeOK(w, http.StatusOK, map[string]any{
+			"service":    "easycodex-agent",
+			"lanEnabled": true,
+		})
+	}))
+	defer health.Close()
+	cfg := config.Defaults()
+	cfg.Listen = strings.TrimPrefix(health.URL, "http://")
+	cfg.Root = `D:\EasyCodex`
+	cfg.Token = "secret"
+	fake := &fakeWezTerm{}
+	srv, err := New(cfg, fake, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/network-tests", nil)
+	req.RemoteAddr = "127.0.0.1:12345"
+	rec := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d body = %s", rec.Code, rec.Body.String())
+	}
+	var payload struct {
+		OK   bool `json:"ok"`
+		Data struct {
+			Results []networkTestResult `json:"results"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatal(err)
+	}
+	if !payload.OK || len(payload.Data.Results) != 1 || !payload.Data.Results[0].OK || payload.Data.Results[0].Service != "easycodex-agent" {
+		t.Fatalf("unexpected network test payload: %#v", payload)
+	}
 }
 
 func TestConnectionsTracksAuthenticatedClients(t *testing.T) {
