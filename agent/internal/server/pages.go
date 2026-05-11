@@ -675,6 +675,18 @@ function initFromHash(){
   history.replaceState(null, '', location.pathname);
 }
 function trimSlash(value){ return String(value || '').trim().replace(/\/+$/, ''); }
+function isLocalBrowser(){
+  return location.hostname === '127.0.0.1';
+}
+function snapshotPollInterval(){
+  return isLocalBrowser() ? 300 : 1000;
+}
+function sessionPollInterval(){
+  return isLocalBrowser() ? 300 : 2000;
+}
+function snapshotRetryInterval(){
+  return isLocalBrowser() ? 1000 : 3000;
+}
 function saveConnectionFields(){
   state.baseUrl = trimSlash($('baseUrl').value || state.baseUrl || location.origin);
   state.token = String($('browserToken').value || state.token || '').trim();
@@ -826,10 +838,10 @@ async function pollSnapshot(token){
     state.snapshotHash = data.hash || state.snapshotHash;
     if (data.changed) renderTerminal(data.text || '');
     setStatus(i18n.alreadyConnected, 'ok');
-    state.pollTimer = setTimeout(() => pollSnapshot(token), 1000);
+    state.pollTimer = setTimeout(() => pollSnapshot(token), snapshotPollInterval());
   } catch (err) {
     setStatus(i18n.snapshotFailed + ': ' + err.message, 'err');
-    state.pollTimer = setTimeout(() => pollSnapshot(token), 3000);
+    state.pollTimer = setTimeout(() => pollSnapshot(token), snapshotRetryInterval());
   }
 }
 function stopPolling(){
@@ -1116,7 +1128,7 @@ $('connectionSave').onclick = () => saveConnectionDialog().catch(err => setStatu
 window.addEventListener('resize', fitTerminalFont);
 setInterval(() => {
   if (!$('terminalApp').hidden) refreshPaneList().catch(err => setStatus(err.message, 'err'));
-}, 2000);
+}, sessionPollInterval());
 setKeyPanel(false);
 if (state.token) connect().catch(err => { showConnect(true); setStatus(err.message, 'err'); });
 `

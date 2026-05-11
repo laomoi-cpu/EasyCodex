@@ -591,6 +591,9 @@ func TestTerminalPageIsAvailableRemotely(t *testing.T) {
 		!strings.Contains(body, "function applySessionsData(data)") ||
 		!strings.Contains(body, "function updateDocumentTitle()") ||
 		!strings.Contains(body, "baseDocumentTitle") ||
+		!strings.Contains(body, "function snapshotPollInterval()") ||
+		!strings.Contains(body, "return isLocalBrowser() ? 300 : 1000") ||
+		!strings.Contains(body, "return isLocalBrowser() ? 300 : 2000") ||
 		!strings.Contains(body, "function markPaneInput(text)") ||
 		!strings.Contains(body, "await sendRaw(text, enter, true)") ||
 		!strings.Contains(body, "sendRaw(value[0], value[1], false)") ||
