@@ -7,6 +7,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -195,6 +196,26 @@ func TestPairingReturnsConnectionInfo(t *testing.T) {
 	}
 	if payload.Data.Network.Listen != "127.0.0.1:0" || len(payload.Data.Instances) != 1 {
 		t.Fatalf("unexpected pairing data: %#v", payload.Data)
+	}
+}
+
+func TestPairingQRSupportsLongPayload(t *testing.T) {
+	srv, _ := testServer(t)
+	payload := "easycodex://pair?u=https%3A%2F%2F7fb07pk68535.vicp.fun%2Fapi%2Fmobile-pair%3Fcode%3Dfd44d8bc713c%26baseUrl%3Dhttps%253A%252F%252F7fb07pk68535.vicp.fun"
+	req := httptest.NewRequest(http.MethodGet, "/api/pairing/qr.svg?data="+url.QueryEscape(payload), nil)
+	req.RemoteAddr = "127.0.0.1:12345"
+	rec := httptest.NewRecorder()
+
+	srv.Handler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d body = %s", rec.Code, rec.Body.String())
+	}
+	if contentType := rec.Header().Get("Content-Type"); !strings.Contains(contentType, "image/svg+xml") {
+		t.Fatalf("unexpected content type: %s", contentType)
+	}
+	if body := rec.Body.String(); !strings.Contains(body, "<svg ") || !strings.Contains(body, "<rect ") {
+		t.Fatalf("unexpected svg body: %s", body)
 	}
 }
 
