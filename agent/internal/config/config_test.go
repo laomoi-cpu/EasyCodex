@@ -106,6 +106,7 @@ func TestSaveWritesConfigFile(t *testing.T) {
 	cfg.Token = "saved-token"
 	cfg.RegenerateTokenOnStart = true
 	cfg.LANListenPromptShown = true
+	cfg.DisplayName = "Office PC"
 	cfg.PublicBaseURL = "http://100.64.1.2:8765/"
 	cfg.Listen = "0.0.0.0:8765"
 	cfg.MobileDefaults.CWD = `D:\mgame`
@@ -130,11 +131,14 @@ func TestSaveWritesConfigFile(t *testing.T) {
 	if !strings.Contains(string(data), `"publicBaseUrl": "http://100.64.1.2:8765"`) {
 		t.Fatalf("expected normalized public base url in saved config: %s", data)
 	}
+	if !strings.Contains(string(data), `"displayName": "Office PC"`) {
+		t.Fatalf("expected display name in saved config: %s", data)
+	}
 	loaded, found, err := Load(path)
 	if err != nil {
 		t.Fatalf("Load returned error: %v", err)
 	}
-	if !found || loaded.Token != "saved-token" || !loaded.RegenerateTokenOnStart || !loaded.LANListenPromptShown || loaded.PublicBaseURL != "http://100.64.1.2:8765" || loaded.Listen != "0.0.0.0:8765" {
+	if !found || loaded.Token != "saved-token" || !loaded.RegenerateTokenOnStart || !loaded.LANListenPromptShown || loaded.DisplayName != "Office PC" || loaded.PublicBaseURL != "http://100.64.1.2:8765" || loaded.Listen != "0.0.0.0:8765" {
 		t.Fatalf("unexpected loaded config: found=%v cfg=%#v", found, loaded)
 	}
 }

@@ -215,6 +215,7 @@ func TestSettingsSaveWritesConfigAndUpdatesAuth(t *testing.T) {
 		"root":"D:\\EasyCodex",
 		"token":"new-secret",
 		"regenerateTokenOnStart":true,
+		"displayName":"Office PC",
 		"publicBaseUrl":"http://100.64.1.2:8765",
 		"commandTimeoutSeconds":5,
 		"autoLaunch":["main"],
@@ -235,7 +236,7 @@ func TestSettingsSaveWritesConfigAndUpdatesAuth(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load returned error: %v", err)
 	}
-	if !found || loaded.Token != "new-secret" || !loaded.RegenerateTokenOnStart || loaded.PublicBaseURL != "http://100.64.1.2:8765" {
+	if !found || loaded.Token != "new-secret" || !loaded.RegenerateTokenOnStart || loaded.DisplayName != "Office PC" || loaded.PublicBaseURL != "http://100.64.1.2:8765" {
 		t.Fatalf("unexpected saved config: found=%v cfg=%#v", found, loaded)
 	}
 
@@ -287,6 +288,7 @@ func TestSettingsIncludesVersion(t *testing.T) {
 		t.Fatalf("expected version field in settings page: %s", body)
 	}
 	if !strings.Contains(body, `id="uiLanguage"`) ||
+		!strings.Contains(body, `id="displayName"`) ||
 		!strings.Contains(body, "Language") ||
 		strings.Contains(body, `class="lang-switch"`) {
 		t.Fatalf("expected language selector only in settings form: %s", body)
@@ -321,6 +323,41 @@ func TestMachinePageTitleIncludesHostPrefix(t *testing.T) {
 	}
 	if got := machinePageTitle("", "Status"); got != "EasyCodex Status" {
 		t.Fatalf("fallback title = %q", got)
+	}
+	if got := effectiveMachineName(config.Config{DisplayName: "Office PC"}); got != "Office PC" {
+		t.Fatalf("effective name = %q", got)
+	}
+}
+
+func TestAppConfigIncludesMachineName(t *testing.T) {
+	cfg := config.Defaults()
+	cfg.Listen = "127.0.0.1:0"
+	cfg.Token = "secret"
+	cfg.DisplayName = "Office PC"
+	srv, err := New(cfg, &fakeWezTerm{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest(http.MethodGet, "/api/config", nil)
+	req.Header.Set("Authorization", "Bearer secret")
+	rec := httptest.NewRecorder()
+
+	srv.Handler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d body = %s", rec.Code, rec.Body.String())
+	}
+	var payload struct {
+		OK   bool `json:"ok"`
+		Data struct {
+			MachineName string `json:"machineName"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatal(err)
+	}
+	if !payload.OK || payload.Data.MachineName != "Office PC" {
+		t.Fatalf("unexpected config payload: %#v", payload)
 	}
 }
 

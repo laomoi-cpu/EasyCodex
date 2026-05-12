@@ -1,4 +1,4 @@
-﻿package server
+package server
 
 import (
 	"fmt"
@@ -27,7 +27,7 @@ func (s *Server) settingsPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	lang := s.updateUILanguageFromSettings(r)
-	writeHTML(w, settingsPageHTML(lang))
+	writeHTML(w, settingsPageHTML(lang, effectiveMachineName(s.configSnapshot())))
 }
 
 func (s *Server) connectionsPage(w http.ResponseWriter, r *http.Request) {
@@ -35,13 +35,15 @@ func (s *Server) connectionsPage(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusForbidden, fmt.Errorf("connections page is only available from localhost"))
 		return
 	}
-	lang := normalizeUILang(s.configSnapshot().UILanguage)
-	writeHTML(w, connectionsPageHTML(lang))
+	cfg := s.configSnapshot()
+	lang := normalizeUILang(cfg.UILanguage)
+	writeHTML(w, connectionsPageHTML(lang, effectiveMachineName(cfg)))
 }
 
 func (s *Server) terminalPage(w http.ResponseWriter, r *http.Request) {
-	lang := normalizeUILang(s.configSnapshot().UILanguage)
-	writeHTML(w, terminalPageHTML(lang))
+	cfg := s.configSnapshot()
+	lang := normalizeUILang(cfg.UILanguage)
+	writeHTML(w, terminalPageHTML(lang, effectiveMachineName(cfg)))
 }
 
 func (s *Server) statusPage(w http.ResponseWriter, r *http.Request) {
@@ -119,7 +121,7 @@ func (s *Server) statusPage(w http.ResponseWriter, r *http.Request) {
 		html.EscapeString(lang.t("httpTestHint")),
 		html.EscapeString(lang.t("notTested")),
 	)
-	writeHTML(w, pageShell(lang, "status", "status", body, `<script>`+statusJS(lang)+`</script>`))
+	writeHTML(w, pageShell(lang, "status", "status", body, `<script>`+statusJS(lang)+`</script>`, effectiveMachineName(cfg)))
 }
 
 func (s *Server) writePairingConsole(w http.ResponseWriter, lang uiLang, baseURLs []string) {
@@ -195,7 +197,7 @@ func (s *Server) writePairingConsole(w http.ResponseWriter, lang uiLang, baseURL
 		cards.String(),
 		html.EscapeString(lang.t("browserPairTitle")),
 		browserCards.String())
-	writeHTML(w, pageShell(lang, "pairing", "pairing", body, ""))
+	writeHTML(w, pageShell(lang, "pairing", "pairing", body, "", effectiveMachineName(s.configSnapshot())))
 }
 
 func (s *Server) easycodexIcon(w http.ResponseWriter, r *http.Request) {
@@ -223,11 +225,11 @@ func (s *Server) updateUILanguageFromSettings(r *http.Request) uiLang {
 	return normalizeUILang(cfg.UILanguage)
 }
 
-func pageShell(lang uiLang, titleKey, active, body, script string) string {
-	return pageShellWithChrome(lang, titleKey, active, body, script, true)
+func pageShell(lang uiLang, titleKey, active, body, script, machineName string) string {
+	return pageShellWithChrome(lang, titleKey, active, body, script, true, machineName)
 }
 
-func pageShellWithChrome(lang uiLang, titleKey, active, body, script string, chrome bool) string {
+func pageShellWithChrome(lang uiLang, titleKey, active, body, script string, chrome bool, machineName string) string {
 	nav := func(id, href, label string) string {
 		class := ""
 		if id == active {
@@ -248,7 +250,7 @@ func pageShellWithChrome(lang uiLang, titleKey, active, body, script string, chr
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>` + html.EscapeString(machinePageTitle(localMachineName(), title)) + `</title>
+<title>` + html.EscapeString(machinePageTitle(machineName, title)) + `</title>
 <link rel="icon" href="/assets/easycodex.svg">
 <style>` + consoleCSS() + `</style>
 </head>
@@ -273,6 +275,13 @@ func machinePageTitle(machineName, pageTitle string) string {
 	return appTitle
 }
 
+func effectiveMachineName(cfg config.Config) string {
+	if name := strings.TrimSpace(cfg.DisplayName); name != "" {
+		return name
+	}
+	return localMachineName()
+}
+
 func localMachineName() string {
 	name, err := os.Hostname()
 	if err != nil {
@@ -281,7 +290,7 @@ func localMachineName() string {
 	return name
 }
 
-func connectionsPageHTML(lang uiLang) string {
+func connectionsPageHTML(lang uiLang, machineName string) string {
 	body := fmt.Sprintf(`
 <section class="hero compact">
   <div>
@@ -325,7 +334,7 @@ func connectionsPageHTML(lang uiLang) string {
 		html.EscapeString(lang.t("lastRequest")),
 		html.EscapeString(lang.t("count")))
 	script := `<script>` + connectionsJS(lang) + `</script>`
-	return pageShell(lang, "connections", "connections", body, script)
+	return pageShell(lang, "connections", "connections", body, script, machineName)
 }
 
 func statusJS(lang uiLang) string {
@@ -379,7 +388,7 @@ statusTestButton.addEventListener('click', runNetworkTests);
 `
 }
 
-func terminalPageHTML(lang uiLang) string {
+func terminalPageHTML(lang uiLang, machineName string) string {
 	body := fmt.Sprintf(`
 <section class="terminal-page">
   <section id="connectPanel" class="panel terminal-connect">
@@ -509,10 +518,10 @@ func terminalPageHTML(lang uiLang) string {
 		html.EscapeString(lang.t("cancel")),
 		html.EscapeString(lang.t("start")))
 	script := `<script>` + terminalJS(lang) + `</script>`
-	return pageShellWithChrome(lang, "terminal", "terminal", body, script, false)
+	return pageShellWithChrome(lang, "terminal", "terminal", body, script, false, machineName)
 }
 
-func settingsPageHTML(lang uiLang) string {
+func settingsPageHTML(lang uiLang, machineName string) string {
 	body := fmt.Sprintf(`
 <section class="hero compact">
   <div>
@@ -527,6 +536,7 @@ func settingsPageHTML(lang uiLang) string {
     <h2>%s</h2>
     <div class="field-grid">
       <label><span>%s</span><input id="listen" autocomplete="off" placeholder="0.0.0.0:8765"></label>
+      <label><span>%s</span><input id="displayName" autocomplete="off"></label>
       <label><span>%s</span><input id="token" autocomplete="off"></label>
       <label><span>%s</span><input id="publicBaseUrl" autocomplete="off" placeholder="http://100.x.y.z:8765"></label>
       <label><span>%s</span><input id="root" autocomplete="off"></label>
@@ -585,6 +595,7 @@ func settingsPageHTML(lang uiLang) string {
 		html.EscapeString(lang.t("loading")),
 		html.EscapeString(lang.t("network")),
 		html.EscapeString(lang.t("listenAddress")),
+		html.EscapeString(lang.t("displayName")),
 		html.EscapeString(lang.t("agentToken")),
 		html.EscapeString(lang.t("publicBaseURL")),
 		html.EscapeString(lang.t("easyRoot")),
@@ -613,7 +624,7 @@ func settingsPageHTML(lang uiLang) string {
 		html.EscapeString(lang.t("reload")),
 		html.EscapeString(lang.t("saveSettings")))
 	script := `<script>const currentUILanguage = "` + html.EscapeString(string(lang)) + `";</script><script>` + settingsJS(lang) + `</script>`
-	return pageShell(lang, "settings", "settings", body, script)
+	return pageShell(lang, "settings", "settings", body, script, machineName)
 }
 
 func consoleCSS() string {
@@ -1429,7 +1440,7 @@ function setUpdateProgress(percent, text){
 function lines(value){ return value.split(/\r?\n/).map(x=>x.trim()).filter(Boolean); }
 function fill(){
   const c=currentConfig;
-  $('listen').value=c.listen||''; $('token').value=c.token||''; $('publicBaseUrl').value=c.publicBaseUrl||''; $('root').value=c.root||'';
+  $('listen').value=c.listen||''; $('displayName').value=c.displayName||''; $('token').value=c.token||''; $('publicBaseUrl').value=c.publicBaseUrl||''; $('root').value=c.root||'';
   $('version').value=currentVersion||'dev';
   $('uiLanguage').value=c.uiLanguage||currentUILanguage||'en';
   $('timeout').value=c.commandTimeoutSeconds||5; $('regenToken').checked=!!c.regenerateTokenOnStart; $('lanPromptShown').checked=!!c.lanListenPromptShown; $('closeGui').checked=!!c.closeLaunchedGuiOnExit;
@@ -1473,7 +1484,7 @@ function collect(){
     class: row.querySelector('[data-field=class]').value.trim()
   }));
   return {
-    listen:$('listen').value.trim(), token:$('token').value.trim(), publicBaseUrl:$('publicBaseUrl').value.trim(), uiLanguage:$('uiLanguage').value, root:$('root').value.trim(),
+    listen:$('listen').value.trim(), displayName:$('displayName').value.trim(), token:$('token').value.trim(), publicBaseUrl:$('publicBaseUrl').value.trim(), uiLanguage:$('uiLanguage').value, root:$('root').value.trim(),
     commandTimeoutSeconds:parseInt($('timeout').value,10)||5,
     regenerateTokenOnStart:$('regenToken').checked,
     lanListenPromptShown:$('lanPromptShown').checked,

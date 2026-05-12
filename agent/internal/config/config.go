@@ -24,6 +24,7 @@ type Config struct {
 	Token                  string         `json:"token"`
 	RegenerateTokenOnStart bool           `json:"regenerateTokenOnStart"`
 	LANListenPromptShown   bool           `json:"lanListenPromptShown"`
+	DisplayName            string         `json:"displayName"`
 	PublicBaseURL          string         `json:"publicBaseUrl"`
 	UILanguage             string         `json:"uiLanguage"`
 	CommandTimeoutSeconds  int            `json:"commandTimeoutSeconds"`
@@ -144,6 +145,7 @@ func Normalize(cfg *Config) {
 		cfg.Root = inferRoot()
 	}
 	cfg.Token = strings.TrimSpace(cfg.Token)
+	cfg.DisplayName = strings.TrimSpace(cfg.DisplayName)
 	cfg.PublicBaseURL = strings.TrimRight(strings.TrimSpace(cfg.PublicBaseURL), "/")
 	cfg.UILanguage = strings.ToLower(strings.TrimSpace(cfg.UILanguage))
 	if cfg.UILanguage == "" {

@@ -75,6 +75,7 @@ public class MainActivity extends Activity {
     private String baseUrl = "http://127.0.0.1:8765";
     private String token = "";
     private String clientId = "";
+    private String serverName = "";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -378,17 +379,18 @@ public class MainActivity extends Activity {
     }
 
     private void testConnection(boolean reloadOnSuccess) {
-        setStatus("连接中", "work");
-        requestAbsolute(baseUrl + "/api/health", true, result -> {
+        setStatus(statusWithServer("连接中"), "work");
+        requestAbsolute(baseUrl + "/api/config", true, result -> {
             if (result.ok) {
+                serverName = result.data.optString("machineName", serverName).trim();
                 updateConnectionHistoryStatus(baseUrl, "ok");
-                setStatus("Online", "ok");
+                setStatus(statusWithServer("Online"), "ok");
                 if (reloadOnSuccess) {
                     loadTerminal();
                 }
             } else {
                 updateConnectionHistoryStatus(baseUrl, "fail");
-                setStatus("Offline: " + result.error, "err");
+                setStatus(statusWithServer("Offline") + ": " + result.error, "err");
             }
         });
     }
@@ -474,7 +476,11 @@ public class MainActivity extends Activity {
     }
 
     private void applyConnection(EditText urlField, EditText tokenField) {
-        baseUrl = trimTrailingSlash(urlField.getText().toString().trim());
+        String nextBaseUrl = trimTrailingSlash(urlField.getText().toString().trim());
+        if (!nextBaseUrl.equals(baseUrl)) {
+            serverName = "";
+        }
+        baseUrl = nextBaseUrl;
         token = tokenField.getText().toString().trim();
         saveSettings();
         rememberConnection(baseUrl, token, "saved");
@@ -632,7 +638,11 @@ public class MainActivity extends Activity {
     }
 
     private void applyPairingPayload(JSONObject payload) {
-        baseUrl = trimTrailingSlash(payload.optString("baseUrl", baseUrl));
+        String nextBaseUrl = trimTrailingSlash(payload.optString("baseUrl", baseUrl));
+        if (!nextBaseUrl.equals(baseUrl)) {
+            serverName = "";
+        }
+        baseUrl = nextBaseUrl;
         token = payload.optString("token", token);
         saveSettings();
         rememberConnection(baseUrl, token, "ok");
@@ -852,6 +862,14 @@ public class MainActivity extends Activity {
         statusView.setTextColor(fg);
         statusView.setBackground(rounded(bg, dp(8), 0));
         statusView.setPadding(dp(10), 0, dp(10), 0);
+    }
+
+    private String statusWithServer(String status) {
+        String name = serverName == null ? "" : serverName.trim();
+        if (name.isEmpty()) {
+            return status;
+        }
+        return status + " - " + name;
     }
 
     private EditText input(String hint, String value) {

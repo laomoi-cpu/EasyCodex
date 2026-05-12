@@ -90,6 +90,7 @@ type mobileDefaultsResponse struct {
 type appConfigResponse struct {
 	Instances []instanceResponse     `json:"instances"`
 	Defaults  mobileDefaultsResponse `json:"defaults"`
+	Machine   string                 `json:"machineName"`
 }
 
 type settingsResponse struct {
@@ -293,9 +294,10 @@ func (s *Server) health(w http.ResponseWriter, r *http.Request) {
 	cfg := s.configSnapshot()
 	network := netinfo.Inspect(cfg.Listen)
 	writeOK(w, http.StatusOK, map[string]any{
-		"service":    "easycodex-agent",
-		"time":       time.Now().Format(time.RFC3339Nano),
-		"lanEnabled": network.LANEnabled,
+		"service":     "easycodex-agent",
+		"time":        time.Now().Format(time.RFC3339Nano),
+		"lanEnabled":  network.LANEnabled,
+		"machineName": effectiveMachineName(cfg),
 	})
 }
 
@@ -385,9 +387,11 @@ func (s *Server) mobilePairCode() string {
 }
 
 func (s *Server) appConfig(w http.ResponseWriter, r *http.Request) {
+	cfg := s.configSnapshot()
 	writeOK(w, http.StatusOK, appConfigResponse{
 		Instances: s.instanceResponses(),
 		Defaults:  s.mobileDefaultsResponse(),
+		Machine:   effectiveMachineName(cfg),
 	})
 }
 
