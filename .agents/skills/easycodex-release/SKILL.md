@@ -9,6 +9,7 @@ description: Release workflow for the EasyCodex repository. Use when publishing 
 
 - Treat a version as published only after a GitHub Release exists.
 - Do not say "released" when only a tag or Actions artifact exists.
+- Do not rely only on the GitHub Actions web page status. It can lag or show a cached `In progress` state after the Release is already published.
 - Every release must update the top of `README.md` with the latest built zip download link.
 - Do not commit local runtime files such as `agent/config.json` or `task.md`.
 - Use Chinese Git commit messages for project commits.
@@ -51,13 +52,15 @@ git push git@github.com:laomoi-cpu/EasyCodex.git master
 git push git@github.com:laomoi-cpu/EasyCodex.git v0.0.x
 ```
 
-5. Monitor GitHub Actions until the tag run completes:
+5. Monitor GitHub Actions until the tag run completes when the API is available:
 
 ```powershell
 Invoke-RestMethod -Uri "https://api.github.com/repos/laomoi-cpu/EasyCodex/actions/runs?per_page=10" -Headers @{ 'User-Agent'='EasyCodex-check' }
 ```
 
-6. Verify the GitHub Release exists and contains release assets:
+If the GitHub REST API is rate-limited or the Actions web page appears stale, switch to Release verification instead of waiting on the cached Actions page.
+
+6. Verify the GitHub Release exists and contains release assets. Prefer the API when available:
 
 ```powershell
 Invoke-RestMethod -Uri "https://api.github.com/repos/laomoi-cpu/EasyCodex/releases/latest" -Headers @{ 'User-Agent'='EasyCodex-check' }
@@ -70,6 +73,25 @@ Expected assets:
 - `EasyCodex.exe`
 - `EasyCodex-0.0.x.apk`
 - `manifest.json`
+
+When API verification is unavailable, verify the release page and asset URLs directly:
+
+```powershell
+$version = "0.0.x"
+$tag = "v$version"
+$assets = @(
+  "EasyCodex-$version.zip",
+  "EasyCodex-$version.patch.zip",
+  "EasyCodex.exe",
+  "EasyCodex-$version.apk",
+  "manifest.json"
+)
+foreach ($asset in $assets) {
+  curl.exe -I --max-time 20 -L "https://github.com/laomoi-cpu/EasyCodex/releases/download/$tag/$asset"
+}
+```
+
+For direct asset checks, either a GitHub `302 Found` redirect to `release-assets.githubusercontent.com` or a final `200 OK` confirms the asset exists. A `404 Not Found` means the asset is not published yet. Large assets may time out after the redirect on slow networks; if the redirect is present and names the expected `filename=...`, treat the asset as present and cross-check the Release page.
 
 ## Workflow Requirement
 

@@ -1,49 +1,6 @@
 local wezterm = require 'wezterm'
-local act = wezterm.action
 
 local config = wezterm.config_builder()
-
-local easycodex_root = os.getenv 'EASYCODEX_ROOT' or 'D:\\EasyCodex'
-local paste_image_script = easycodex_root .. '\\wezterm-config\\scripts\\paste-image.ps1'
-
-local function trim(value)
-  return (value or ''):gsub('%s+$', '')
-end
-
-local function quote_for_shell(path)
-  return '"' .. path:gsub('"', '\\"') .. '"'
-end
-
-local paste_image_or_clipboard = wezterm.action_callback(function(window, pane)
-  local ok, stdout, stderr = wezterm.run_child_process {
-    'powershell.exe',
-    '-NoProfile',
-    '-Sta',
-    '-ExecutionPolicy',
-    'Bypass',
-    '-File',
-    paste_image_script,
-  }
-
-  local path = trim(stdout)
-  if ok and path ~= '' then
-    pane:send_paste(quote_for_shell(path) .. ' ')
-    return
-  end
-
-  if not ok and stderr and stderr ~= '' then
-    wezterm.log_warn('paste-image.ps1 failed: ' .. stderr)
-  end
-
-  window:perform_action(act.PasteFrom 'Clipboard', pane)
-end)
-
-config.keys = {
-  { key = 'v', mods = 'CTRL', action = paste_image_or_clipboard },
-  { key = 'V', mods = 'CTRL', action = paste_image_or_clipboard },
-  { key = 'v', mods = 'SHIFT|CTRL', action = paste_image_or_clipboard },
-  { key = 'V', mods = 'SHIFT|CTRL', action = paste_image_or_clipboard },
-}
 
 config.status_update_interval = 1000
 
