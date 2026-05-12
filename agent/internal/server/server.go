@@ -273,9 +273,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/settings", s.localOnly(s.settings))
 	mux.HandleFunc("GET /api/connections", s.localOnly(s.connections))
 	mux.HandleFunc("GET /api/network-tests", s.localOnly(s.networkTests))
-	mux.HandleFunc("GET /api/update/check", s.localOnly(s.checkUpdate))
-	mux.HandleFunc("GET /api/update/status", s.localOnly(s.updateStatus))
-	mux.HandleFunc("POST /api/update/apply", s.localOnly(s.applyUpdate))
+	mux.HandleFunc("GET /api/update/check", s.localOrAuth(s.checkUpdate))
+	mux.HandleFunc("GET /api/update/status", s.localOrAuth(s.updateStatus))
+	mux.HandleFunc("POST /api/update/apply", s.localOrAuth(s.applyUpdate))
 	mux.HandleFunc("POST /api/restart", s.localOnly(s.restartAgent))
 	mux.HandleFunc("POST /api/settings", s.localOnly(s.saveSettings))
 	mux.HandleFunc("GET /api/instances", s.auth(s.instancesList))
@@ -1088,6 +1088,16 @@ func (s *Server) localOnly(next http.HandlerFunc) http.HandlerFunc {
 			return
 		}
 		next(w, r)
+	}
+}
+
+func (s *Server) localOrAuth(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if isLocalRequest(r) {
+			next(w, r)
+			return
+		}
+		s.auth(next)(w, r)
 	}
 }
 

@@ -468,7 +468,7 @@ func TestUpdateCheckReportsNewRelease(t *testing.T) {
 	}
 }
 
-func TestUpdateCheckIsLocalOnly(t *testing.T) {
+func TestUpdateCheckRequiresAuthWhenRemote(t *testing.T) {
 	srv, _ := testServer(t)
 	req := httptest.NewRequest(http.MethodGet, "/api/update/check", nil)
 	req.RemoteAddr = "192.168.1.20:12345"
@@ -476,7 +476,7 @@ func TestUpdateCheckIsLocalOnly(t *testing.T) {
 
 	srv.Handler().ServeHTTP(rec, req)
 
-	if rec.Code != http.StatusForbidden {
+	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("status = %d body = %s", rec.Code, rec.Body.String())
 	}
 }
@@ -633,8 +633,12 @@ func TestTerminalPageIsAvailableRemotely(t *testing.T) {
 		!strings.Contains(body, "document.addEventListener('fullscreenchange'") ||
 		!strings.Contains(body, "addEventListener('drop', handleDrop)") ||
 		!strings.Contains(body, `id="connectionDialog"`) ||
+		!strings.Contains(body, `id="terminalCheckUpdate"`) ||
 		!strings.Contains(body, "function openConnectionDialog()") ||
+		!strings.Contains(body, "function checkTerminalServerUpdate()") ||
+		!strings.Contains(body, "/api/update/apply") ||
 		!strings.Contains(body, "$('editConnection').onclick = () => openConnectionDialog()") ||
+		!strings.Contains(body, "$('terminalCheckUpdate').onclick = () => checkTerminalServerUpdate()") ||
 		!strings.Contains(body, "function fitTerminalFont()") ||
 		!strings.Contains(body, "function applySessionsData(data)") ||
 		!strings.Contains(body, "function updateDocumentTitle()") ||

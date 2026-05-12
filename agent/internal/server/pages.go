@@ -463,6 +463,7 @@ func terminalPageHTML(lang uiLang, machineName string) string {
     <label><span>%s</span><input id="dialogToken" autocomplete="off" placeholder="easycodex-dev-token"></label>
   </div>
   <div class="dialog-actions">
+    <button id="terminalCheckUpdate" type="button" class="secondary icon-button" aria-label="%s" title="%s">&#x21BB;</button>
     <button id="connectionCancel" type="button" class="secondary">%s</button>
     <button id="connectionSave" type="button">%s</button>
   </div>
@@ -508,6 +509,8 @@ func terminalPageHTML(lang uiLang, machineName string) string {
 		html.EscapeString(lang.t("serverSettings")),
 		html.EscapeString(lang.t("agentBaseURL")),
 		html.EscapeString(lang.t("token")),
+		html.EscapeString(lang.t("checkServerUpdate")),
+		html.EscapeString(lang.t("checkServerUpdate")),
 		html.EscapeString(lang.t("cancel")),
 		html.EscapeString(lang.t("save")),
 		html.EscapeString(lang.t("newSession")),
@@ -753,15 +756,38 @@ function closeConnectionDialog(){
   const dialog = $('connectionDialog');
   if (dialog.close) dialog.close(); else dialog.removeAttribute('open');
 }
-async function saveConnectionDialog(){
+function syncConnectionDialogFields(){
   state.baseUrl = trimSlash($('dialogBaseUrl').value || location.origin);
   state.token = String($('dialogToken').value || '').trim();
   $('baseUrl').value = state.baseUrl;
   $('browserToken').value = state.token;
   saveConnectionFields();
+}
+async function saveConnectionDialog(){
+  syncConnectionDialogFields();
   closeConnectionDialog();
   stopPolling();
   await connect();
+}
+async function checkTerminalServerUpdate(){
+  if (!confirm(i18n.updateCheckConfirm || 'Check whether this Agent has a newer version?')) return;
+  syncConnectionDialogFields();
+  setStatus(i18n.checkingRelease, 'work');
+  const info = await api('/api/update/check', {}, true);
+  if (!info.canUpdate) {
+    alert(format(i18n.updateUnavailable || 'No available update. {message}', {message: info.message || ''}));
+    setStatus(info.message || i18n.alreadyConnected, info.upToDate ? 'ok' : '');
+    return;
+  }
+  const version = info.latestVersion || info.packageName || '';
+  if (!confirm(format(i18n.updateConfirm || 'Version {version} is available. Update Agent and restart now?', {version}))) {
+    setStatus(i18n.alreadyConnected, 'ok');
+    return;
+  }
+  setStatus(i18n.startingUpdate, 'work');
+  await api('/api/update/apply', {method:'POST', body:{useGitHubProxy:true}}, true);
+  alert(i18n.startingUpdate);
+  setStatus(i18n.updating, 'work');
 }
 function showConnect(show){
   $('connectPanel').hidden = !show;
@@ -1414,6 +1440,7 @@ $('dialogDelete').onclick = () => { const pane = state.selectedPane; $('paneDial
 $('dialogClone').onclick = () => { const pane = state.selectedPane; $('paneDialog').close(); if (pane) spawnSession(displayCwd(pane.cwd) === '-' ? state.defaults.cwd : displayCwd(pane.cwd)).catch(err => setStatus(err.message, 'err')); };
 $('connectionCancel').onclick = () => closeConnectionDialog();
 $('connectionSave').onclick = () => saveConnectionDialog().catch(err => setStatus(err.message, 'err'));
+$('terminalCheckUpdate').onclick = () => checkTerminalServerUpdate().catch(err => setStatus(err.message, 'err'));
 window.addEventListener('resize', fitTerminalFont);
 setInterval(() => {
   if (!$('terminalApp').hidden) refreshPaneList().catch(err => setStatus(err.message, 'err'));
