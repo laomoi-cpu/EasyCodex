@@ -366,11 +366,7 @@ func (s *Server) mobilePair(w http.ResponseWriter, r *http.Request) {
 	}
 	baseURL := r.URL.Query().Get("baseUrl")
 	if baseURL == "" {
-		scheme := "http"
-		if r.TLS != nil {
-			scheme = "https"
-		}
-		baseURL = scheme + "://" + r.Host
+		baseURL = requestBaseURL(r)
 	}
 	cfg := s.configSnapshot()
 	writeOK(w, http.StatusOK, map[string]any{
@@ -384,6 +380,50 @@ func (s *Server) mobilePairCode() string {
 	cfg := s.configSnapshot()
 	sum := sha256.Sum256([]byte(cfg.Token + "|" + cfg.Listen + "|" + cfg.PublicBaseURL))
 	return hex.EncodeToString(sum[:])[:12]
+}
+
+func requestBaseURL(r *http.Request) string {
+	scheme := forwardedProto(r)
+	if scheme == "" {
+		scheme = "http"
+		if r.TLS != nil {
+			scheme = "https"
+		}
+	}
+	host := firstHeaderValue(r.Header.Get("X-Forwarded-Host"))
+	if host == "" {
+		host = r.Host
+	}
+	return strings.TrimRight(scheme+"://"+host, "/")
+}
+
+func forwardedProto(r *http.Request) string {
+	if proto := firstHeaderValue(r.Header.Get("X-Forwarded-Proto")); proto == "http" || proto == "https" {
+		return proto
+	}
+	if strings.EqualFold(firstHeaderValue(r.Header.Get("X-Forwarded-Ssl")), "on") {
+		return "https"
+	}
+	for _, part := range strings.Split(r.Header.Get("Forwarded"), ";") {
+		key, value, ok := strings.Cut(strings.TrimSpace(part), "=")
+		if !ok || !strings.EqualFold(key, "proto") {
+			continue
+		}
+		proto := strings.ToLower(strings.Trim(strings.TrimSpace(value), `"`))
+		if proto == "http" || proto == "https" {
+			return proto
+		}
+	}
+	return ""
+}
+
+func firstHeaderValue(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+	first, _, _ := strings.Cut(value, ",")
+	return strings.TrimSpace(first)
 }
 
 func (s *Server) appConfig(w http.ResponseWriter, r *http.Request) {

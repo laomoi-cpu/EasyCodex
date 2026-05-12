@@ -47,6 +47,7 @@ import org.json.JSONObject;
 import java.io.BufferedReader;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
@@ -265,7 +266,7 @@ public class MainActivity extends Activity {
             @Override
             public void onPageFinished(WebView view, String url) {
                 applyAndroidPageChrome();
-                setStatus("已打开", "ok");
+                setStatus(statusWithServer("已打开"), "ok");
             }
 
             @Override
@@ -436,10 +437,13 @@ public class MainActivity extends Activity {
         Button scanButton = compactButton("扫码");
         Button saveButton = compactButton("保存");
         Button connectButton = button("连接");
+        Button updateButton = compactButton("更新服务器");
         actions.addView(scanButton, rowWeightParams(1, dp(42), 0, dp(6)));
         actions.addView(saveButton, rowWeightParams(1, dp(42), 0, dp(6)));
         actions.addView(connectButton, rowWeightParams(1, dp(42), 0, 0));
         panel.addView(actions, matchWrap());
+        panel.addView(fieldSpacer(), fixedHeight(dp(8)));
+        panel.addView(updateButton, rowFixedParams(-1, dp(42), 0, 0));
 
         AlertDialog dialog = new AlertDialog.Builder(this).create();
         dialog.setView(panel);
@@ -471,6 +475,11 @@ public class MainActivity extends Activity {
             dialog.dismiss();
             loadTerminal();
             testConnection(false);
+        });
+        updateButton.setOnClickListener(v -> {
+            applyConnection(urlField, tokenField);
+            dialog.dismiss();
+            checkServerUpdate();
         });
         dialog.show();
     }
@@ -533,7 +542,7 @@ public class MainActivity extends Activity {
                     setStatus("配对失败: " + result.error, "err");
                     return;
                 }
-                applyPairingPayload(result.data);
+                applyPairingPayload(result.data, baseUrlFromPairEndpoint(finalPairUrl));
                 loadTerminal();
                 testConnection(false);
             });
@@ -546,7 +555,7 @@ public class MainActivity extends Activity {
         }
         try {
             String json = new String(Base64.decode(data, Base64.DEFAULT), StandardCharsets.UTF_8);
-            applyPairingPayload(new JSONObject(json));
+            applyPairingPayload(new JSONObject(json), "");
             loadTerminal();
             testConnection(false);
         } catch (Exception ex) {
@@ -572,7 +581,7 @@ public class MainActivity extends Activity {
                         setStatus("配对失败: " + result.error, "err");
                         return;
                     }
-                    applyPairingPayload(result.data);
+                    applyPairingPayload(result.data, baseUrlFromPairEndpoint(contents));
                     loadTerminal();
                     testConnection(false);
                 });
@@ -637,8 +646,8 @@ public class MainActivity extends Activity {
         }
     }
 
-    private void applyPairingPayload(JSONObject payload) {
-        String nextBaseUrl = trimTrailingSlash(payload.optString("baseUrl", baseUrl));
+    private void applyPairingPayload(JSONObject payload, String pairEndpointBaseUrl) {
+        String nextBaseUrl = normalizePairingBaseUrl(payload.optString("baseUrl", baseUrl), pairEndpointBaseUrl);
         if (!nextBaseUrl.equals(baseUrl)) {
             serverName = "";
         }
@@ -649,20 +658,58 @@ public class MainActivity extends Activity {
         setStatus("已配对", "ok");
     }
 
+    private String normalizePairingBaseUrl(String payloadBaseUrl, String pairEndpointBaseUrl) {
+        String nextBaseUrl = trimTrailingSlash(payloadBaseUrl);
+        String endpointBaseUrl = trimTrailingSlash(pairEndpointBaseUrl);
+        if (endpointBaseUrl.isEmpty()) {
+            return nextBaseUrl;
+        }
+        try {
+            Uri next = Uri.parse(nextBaseUrl);
+            Uri endpoint = Uri.parse(endpointBaseUrl);
+            if ("https".equals(endpoint.getScheme())
+                    && "http".equals(next.getScheme())
+                    && sameAuthority(next, endpoint)) {
+                return endpointBaseUrl;
+            }
+        } catch (Exception ignored) {
+        }
+        return nextBaseUrl;
+    }
+
+    private boolean sameAuthority(Uri left, Uri right) {
+        String leftAuthority = left == null ? null : left.getEncodedAuthority();
+        String rightAuthority = right == null ? null : right.getEncodedAuthority();
+        return leftAuthority != null && leftAuthority.equalsIgnoreCase(rightAuthority);
+    }
+
     private void requestAbsolute(String urlText, boolean auth, Callback callback) {
+        requestJson("GET", urlText, auth, null, callback);
+    }
+
+    private void requestJson(String method, String urlText, boolean auth, JSONObject body, Callback callback) {
         executor.execute(() -> {
             Result result = new Result();
             HttpURLConnection conn = null;
             try {
                 URL url = new URL(urlText);
                 conn = (HttpURLConnection) url.openConnection();
-                conn.setRequestMethod("GET");
+                conn.setRequestMethod(method);
                 conn.setConnectTimeout(5000);
                 conn.setReadTimeout(10000);
                 conn.setRequestProperty("Accept", "application/json");
                 applyClientHeaders(conn);
                 if (auth && !token.isEmpty()) {
                     conn.setRequestProperty("Authorization", "Bearer " + token);
+                }
+                if (body != null) {
+                    byte[] bytes = body.toString().getBytes(StandardCharsets.UTF_8);
+                    conn.setDoOutput(true);
+                    conn.setRequestProperty("Content-Type", "application/json; charset=utf-8");
+                    conn.setFixedLengthStreamingMode(bytes.length);
+                    try (OutputStream stream = conn.getOutputStream()) {
+                        stream.write(bytes);
+                    }
                 }
                 int code = conn.getResponseCode();
                 String text = readAll(code >= 400 ? conn.getErrorStream() : conn.getInputStream());
@@ -687,6 +734,105 @@ public class MainActivity extends Activity {
             }
             main.post(() -> callback.done(result));
         });
+    }
+
+    private void checkServerUpdate() {
+        if (baseUrl == null || baseUrl.trim().isEmpty()) {
+            setStatus("检查更新失败: 缺少服务器地址", "err");
+            return;
+        }
+        setStatus(statusWithServer("检查更新中"), "work");
+        requestAbsolute(baseUrl + "/api/update/check", true, result -> {
+            if (!result.ok) {
+                setStatus(statusWithServer("检查更新失败") + ": " + result.error, "err");
+                showMessage("检查更新失败", result.error);
+                return;
+            }
+            if (!result.data.optBoolean("canUpdate", false)) {
+                String message = result.data.optString("message", "当前已是最新版本");
+                setStatus(statusWithServer("无需更新"), "ok");
+                showMessage("服务器更新", message);
+                return;
+            }
+            confirmServerUpdate(result.data);
+        });
+    }
+
+    private void confirmServerUpdate(JSONObject info) {
+        String latest = info.optString("latestVersion", "unknown");
+        String current = info.optString("currentVersion", "dev");
+        String packageName = info.optString("packageName", "");
+        String message = "当前版本: " + current + "\n最新版本: " + latest;
+        if (!packageName.isEmpty()) {
+            message += "\n更新包: " + packageName;
+        }
+        new AlertDialog.Builder(this)
+                .setTitle("更新服务器")
+                .setMessage(message + "\n\n是否自动更新 Agent 并重启？")
+                .setNegativeButton("取消", (dialog, which) -> setStatus(statusWithServer("已取消更新"), "warn"))
+                .setPositiveButton("更新并重启", (dialog, which) -> applyServerUpdate())
+                .show();
+    }
+
+    private void applyServerUpdate() {
+        JSONObject body = new JSONObject();
+        try {
+            body.put("useGitHubProxy", true);
+        } catch (Exception ignored) {
+        }
+        setStatus(statusWithServer("正在启动更新"), "work");
+        requestJson("POST", baseUrl + "/api/update/apply", true, body, result -> {
+            if (!result.ok) {
+                setStatus(statusWithServer("启动更新失败") + ": " + result.error, "err");
+                showMessage("启动更新失败", result.error);
+                return;
+            }
+            setStatus(statusWithServer("正在更新服务器"), "work");
+            pollServerUpdate(0);
+        });
+    }
+
+    private void pollServerUpdate(int attempts) {
+        if (attempts > 120) {
+            setStatus(statusWithServer("更新仍在运行"), "work");
+            return;
+        }
+        main.postDelayed(() -> requestAbsolute(baseUrl + "/api/update/status", true, result -> {
+            if (!result.ok) {
+                setStatus(statusWithServer("服务器可能正在重启"), "work");
+                return;
+            }
+            JSONObject job = result.data;
+            String message = job.optString("message", job.optString("phase", "正在更新"));
+            int percent = job.optInt("percent", 0);
+            if (percent > 0) {
+                message += " " + percent + "%";
+            }
+            if (job.optBoolean("active", false)) {
+                setStatus(statusWithServer(message), "work");
+                pollServerUpdate(attempts + 1);
+                return;
+            }
+            if (job.optBoolean("done", false) && job.optBoolean("ok", false)) {
+                setStatus(statusWithServer("更新已准备，等待重启"), "ok");
+                showMessage("服务器更新", "更新已准备好，Agent 重启时连接会短暂断开。");
+                return;
+            }
+            String error = job.optString("error", "");
+            if (error.isEmpty()) {
+                error = message;
+            }
+            setStatus(statusWithServer("更新失败") + ": " + error, "err");
+            showMessage("更新失败", error);
+        }), 1200);
+    }
+
+    private void showMessage(String title, String message) {
+        new AlertDialog.Builder(this)
+                .setTitle(title)
+                .setMessage(message == null || message.isEmpty() ? "-" : message)
+                .setPositiveButton("确定", null)
+                .show();
     }
 
     private void applyClientHeaders(HttpURLConnection conn) {

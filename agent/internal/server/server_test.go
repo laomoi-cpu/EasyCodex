@@ -198,6 +198,56 @@ func TestPairingReturnsConnectionInfo(t *testing.T) {
 	}
 }
 
+func TestMobilePairUsesExplicitBaseURL(t *testing.T) {
+	srv, _ := testServer(t)
+	req := httptest.NewRequest(http.MethodGet, "/api/mobile-pair?code="+srv.mobilePairCode()+"&baseUrl=https%3A%2F%2Fpublic.example.test", nil)
+	rec := httptest.NewRecorder()
+
+	srv.Handler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d body = %s", rec.Code, rec.Body.String())
+	}
+	var payload struct {
+		OK   bool `json:"ok"`
+		Data struct {
+			BaseURL string `json:"baseUrl"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("invalid json: %v", err)
+	}
+	if !payload.OK || payload.Data.BaseURL != "https://public.example.test" {
+		t.Fatalf("unexpected mobile pair base url: %#v", payload)
+	}
+}
+
+func TestMobilePairUsesForwardedProto(t *testing.T) {
+	srv, _ := testServer(t)
+	req := httptest.NewRequest(http.MethodGet, "/api/mobile-pair?code="+srv.mobilePairCode(), nil)
+	req.Host = "public.example.test"
+	req.Header.Set("X-Forwarded-Proto", "https")
+	rec := httptest.NewRecorder()
+
+	srv.Handler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d body = %s", rec.Code, rec.Body.String())
+	}
+	var payload struct {
+		OK   bool `json:"ok"`
+		Data struct {
+			BaseURL string `json:"baseUrl"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("invalid json: %v", err)
+	}
+	if !payload.OK || payload.Data.BaseURL != "https://public.example.test" {
+		t.Fatalf("unexpected mobile pair base url: %#v", payload)
+	}
+}
+
 func TestSettingsSaveWritesConfigAndUpdatesAuth(t *testing.T) {
 	cfg := config.Defaults()
 	cfg.Listen = "127.0.0.1:0"

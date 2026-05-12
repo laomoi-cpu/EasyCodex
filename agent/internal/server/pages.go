@@ -128,7 +128,7 @@ func (s *Server) writePairingConsole(w http.ResponseWriter, lang uiLang, baseURL
 	var cards strings.Builder
 	var browserCards strings.Builder
 	for _, baseURL := range baseURLs {
-		pairURL := baseURL + "/api/mobile-pair?code=" + url.QueryEscape(s.mobilePairCode())
+		pairURL := baseURL + "/api/mobile-pair?code=" + url.QueryEscape(s.mobilePairCode()) + "&baseUrl=" + url.QueryEscape(baseURL)
 		deepLink := "easycodex://pair?u=" + url.QueryEscape(pairURL)
 		qrURL := "/api/pairing/qr.svg?data=" + url.QueryEscape(deepLink)
 		fmt.Fprintf(&cards, `
