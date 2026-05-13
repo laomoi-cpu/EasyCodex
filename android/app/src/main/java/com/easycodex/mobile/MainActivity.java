@@ -458,7 +458,10 @@ public class MainActivity extends Activity {
     }
 
     private String terminalUrl() {
-        return baseUrl + "/terminal#baseUrl=" + Uri.encode(baseUrl) + "&token=" + Uri.encode(token) + "&autoScrollTerminal=" + (autoScrollTerminal ? "1" : "0");
+        return baseUrl + "/terminal?androidReload=" + System.currentTimeMillis()
+                + "#baseUrl=" + Uri.encode(baseUrl)
+                + "&token=" + Uri.encode(token)
+                + "&autoScrollTerminal=" + (autoScrollTerminal ? "1" : "0");
     }
 
     private boolean isTrustedWebPage() {
