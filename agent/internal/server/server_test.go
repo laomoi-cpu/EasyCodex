@@ -684,6 +684,17 @@ func TestTerminalPageIsAvailableRemotely(t *testing.T) {
 		!strings.Contains(body, ".pane-state{display:inline-flex") ||
 		!strings.Contains(body, ".page-terminal .terminal-output{min-height:62dvh") ||
 		!strings.Contains(body, ".page-terminal .send-row{position:sticky") ||
+		!strings.Contains(body, `id="mobileInputDialog"`) ||
+		!strings.Contains(body, `id="mobileCommandInput"`) ||
+		!strings.Contains(body, `id="mobileAddAttachment"`) ||
+		!strings.Contains(body, `id="mobileAttachmentPanel"`) ||
+		!strings.Contains(body, ".mobile-input-dialog textarea{min-height:160px") ||
+		!strings.Contains(body, "function openMobileInputDialog()") ||
+		!strings.Contains(body, "function syncMobileCommandInputMode()") ||
+		!strings.Contains(body, "function renderAttachmentPanel(panelId, summaryId, listId)") ||
+		!strings.Contains(body, "$('commandInput').addEventListener('pointerdown', handleCommandInputIntent)") ||
+		!strings.Contains(body, "$('mobileInputSend').onclick = () => sendMobileInput().catch") ||
+		!strings.Contains(body, "$('mobileAddAttachment').onclick = () => $('attachmentInput').click()") ||
 		!strings.Contains(body, ".key-panel[hidden]{display:none!important}") ||
 		!strings.Contains(body, ".page-terminal .terminal-app[hidden],.page-terminal .terminal-connect[hidden]{display:none!important}") ||
 		!strings.Contains(body, "font-size:var(--terminal-font-size,14px)") ||
@@ -714,6 +725,8 @@ func TestTerminalPageIsAvailableRemotely(t *testing.T) {
 		!strings.Contains(body, "function applySessionsData(data)") ||
 		!strings.Contains(body, "function updateDocumentTitle()") ||
 		!strings.Contains(body, "baseDocumentTitle") ||
+		!strings.Contains(body, "function notifyAndroidWorkingCount()") ||
+		!strings.Contains(body, "window.EasyCodexAndroid.updateWorkingCount") ||
 		!strings.Contains(body, "function snapshotPollInterval()") ||
 		!strings.Contains(body, "return isLocalBrowser() ? 300 : 1000") ||
 		!strings.Contains(body, "return isLocalBrowser() ? 300 : 2000") ||

@@ -25,6 +25,7 @@ import android.view.WindowManager;
 import android.view.inputmethod.InputMethodManager;
 import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
+import android.webkit.JavascriptInterface;
 import android.webkit.WebResourceError;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
@@ -77,6 +78,9 @@ public class MainActivity extends Activity {
     private String token = "";
     private String clientId = "";
     private String serverName = "";
+    private String statusText = "Offline";
+    private String statusKind = "warn";
+    private int workingCount = 0;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -234,6 +238,7 @@ public class MainActivity extends Activity {
             settings.setMixedContentMode(WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE);
         }
         webView.setBackgroundColor(Color.BLACK);
+        webView.addJavascriptInterface(new AndroidBridge(), "EasyCodexAndroid");
         webView.setWebChromeClient(new WebChromeClient() {
             @Override
             public boolean onShowFileChooser(WebView view, ValueCallback<Uri[]> filePathCallback, FileChooserParams fileChooserParams) {
@@ -279,10 +284,27 @@ public class MainActivity extends Activity {
         });
     }
 
+    private class AndroidBridge {
+        @JavascriptInterface
+        public void updateWorkingCount(String value) {
+            int count = 0;
+            try {
+                count = Math.max(0, Integer.parseInt(value == null ? "0" : value.trim()));
+            } catch (Exception ignored) {
+            }
+            final int finalCount = count;
+            main.post(() -> {
+                workingCount = finalCount;
+                renderStatus();
+            });
+        }
+    }
+
     private void loadTerminal() {
         saveSettings();
         rememberConnection(baseUrl, token, "saved");
         String url = terminalUrl();
+        workingCount = 0;
         setStatus("加载中", "work");
         webView.loadUrl(url);
     }
@@ -986,19 +1008,31 @@ public class MainActivity extends Activity {
     }
 
     private void setStatus(String text, String kind) {
+        statusText = text == null ? "" : text;
+        statusKind = kind == null ? "" : kind;
+        renderStatus();
+    }
+
+    private void renderStatus() {
         if (statusView == null) {
             return;
         }
-        statusView.setText(text);
+        String display = statusText;
+        String displayKind = statusKind;
+        if ("ok".equals(statusKind) && workingCount > 0) {
+            display = statusWithServer("Working " + workingCount);
+            displayKind = "work";
+        }
+        statusView.setText(display);
         int bg;
         int fg;
-        if ("ok".equals(kind)) {
+        if ("ok".equals(displayKind)) {
             bg = 0xFFDCFCE7;
             fg = 0xFF166534;
-        } else if ("err".equals(kind)) {
+        } else if ("err".equals(displayKind)) {
             bg = 0xFFFEE2E2;
             fg = 0xFF991B1B;
-        } else if ("work".equals(kind)) {
+        } else if ("work".equals(displayKind)) {
             bg = 0xFFDBEAFE;
             fg = 0xFF1D4ED8;
         } else {
