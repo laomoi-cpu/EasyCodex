@@ -782,9 +782,15 @@ function initFromHash(){
   history.replaceState(null, '', location.pathname);
 }
 function trimSlash(value){ return String(value || '').trim().replace(/\/+$/, ''); }
+function normalizeBaseURL(value){
+  value = String(value || '').trim();
+  if (!value) return '';
+  if (!/^[a-z][a-z0-9+.-]*:\/\//i.test(value)) value = 'http://' + value;
+  return trimSlash(value);
+}
 function initialBaseURL(){
   if (isLocalBrowser()) return location.origin;
-  return store.getItem('easycodex.baseUrl') || location.origin;
+  return normalizeBaseURL(store.getItem('easycodex.baseUrl')) || location.origin;
 }
 function isLocalBrowser(){
   return isLocalHost(location.hostname);
@@ -799,6 +805,16 @@ function sameOriginBaseUrl(value){
 function shouldAutoConnectWithoutToken(){
   return isLocalBrowser() && sameOriginBaseUrl(state.baseUrl);
 }
+function connectionRedirectURL(){
+  let url;
+  try { url = new URL(state.baseUrl); } catch (_) { return ''; }
+  if (url.origin === location.origin) return '';
+  const params = new URLSearchParams();
+  params.set('baseUrl', url.origin);
+  if (state.token) params.set('token', state.token);
+  params.set('autoScrollTerminal', state.autoScrollTerminal === false ? 'false' : 'true');
+  return url.origin + '/terminal#' + params.toString();
+}
 function snapshotPollInterval(){
   return isLocalBrowser() ? 300 : 1000;
 }
@@ -809,7 +825,7 @@ function snapshotRetryInterval(){
   return isLocalBrowser() ? 1000 : 3000;
 }
 function saveConnectionFields(){
-  state.baseUrl = trimSlash($('baseUrl').value || state.baseUrl || location.origin);
+  state.baseUrl = normalizeBaseURL($('baseUrl').value || state.baseUrl || location.origin);
   state.token = String($('browserToken').value || state.token || '').trim();
   store.setItem('easycodex.baseUrl', state.baseUrl);
   store.setItem('easycodex.token', state.token);
@@ -828,7 +844,7 @@ function closeConnectionDialog(){
   if (dialog.close) dialog.close(); else dialog.removeAttribute('open');
 }
 function syncConnectionDialogFields(){
-  state.baseUrl = trimSlash($('dialogBaseUrl').value || location.origin);
+  state.baseUrl = normalizeBaseURL($('dialogBaseUrl').value || location.origin);
   state.token = String($('dialogToken').value || '').trim();
   state.autoScrollTerminal = $('dialogAutoScrollTerminal').checked;
   store.setItem('easycodex.autoScrollTerminal', state.autoScrollTerminal ? 'true' : 'false');
@@ -938,6 +954,12 @@ async function apiForm(path, formData){
 }
 async function connect(){
   saveConnectionFields();
+  const redirectURL = connectionRedirectURL();
+  if (redirectURL) {
+    setStatus(i18n.connecting, 'work');
+    location.replace(redirectURL);
+    return;
+  }
   setStatus(i18n.connecting, 'work');
   await api('/api/health', {}, false);
   const cfg = await api('/api/config', {}, true);

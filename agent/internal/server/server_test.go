@@ -847,6 +847,9 @@ func TestTerminalPageIsAvailableRemotely(t *testing.T) {
 		!strings.Contains(body, "return terminalMachineName ? status + ' - ' + terminalMachineName : status") ||
 		!strings.Contains(body, "function snapshotPollInterval()") ||
 		!strings.Contains(body, "function initialBaseURL()") ||
+		!strings.Contains(body, "function normalizeBaseURL(value)") ||
+		!strings.Contains(body, "function connectionRedirectURL()") ||
+		!strings.Contains(body, "location.replace(redirectURL)") ||
 		!strings.Contains(body, "function shouldAutoConnectWithoutToken()") ||
 		!strings.Contains(body, "showConnect(!(state.token || shouldAutoConnectWithoutToken()))") ||
 		!strings.Contains(body, "if (state.token || shouldAutoConnectWithoutToken()) connect().catch") ||
