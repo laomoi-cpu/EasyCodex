@@ -71,6 +71,7 @@ public class MainActivity extends Activity {
     private final List<ConnectionHistoryItem> connectionHistory = new ArrayList<>();
 
     private WebView webView;
+    private LinearLayout nativeTopBar;
     private TextView statusView;
     private ValueCallback<Uri[]> fileChooserCallback;
 
@@ -194,11 +195,11 @@ public class MainActivity extends Activity {
         root.setOrientation(LinearLayout.VERTICAL);
         root.setBackgroundColor(0xFF000000);
 
-        LinearLayout topBar = new LinearLayout(this);
-        topBar.setOrientation(LinearLayout.HORIZONTAL);
-        topBar.setGravity(Gravity.CENTER_VERTICAL);
-        topBar.setPadding(dp(8), dp(6), dp(8), dp(6));
-        topBar.setBackgroundColor(0xFF111827);
+        nativeTopBar = new LinearLayout(this);
+        nativeTopBar.setOrientation(LinearLayout.HORIZONTAL);
+        nativeTopBar.setGravity(Gravity.CENTER_VERTICAL);
+        nativeTopBar.setPadding(dp(8), dp(6), dp(8), dp(6));
+        nativeTopBar.setBackgroundColor(0xFF111827);
 
         statusView = new TextView(this);
         statusView.setTextSize(12);
@@ -209,10 +210,10 @@ public class MainActivity extends Activity {
 
         Button scanButton = iconButton("扫码");
         Button settingsButton = iconButton("设置");
-        topBar.addView(statusView, rowWeightParams(1, dp(34), 0, dp(6)));
-        topBar.addView(scanButton, rowFixedParams(dp(56), dp(34), 0, dp(6)));
-        topBar.addView(settingsButton, rowFixedParams(dp(56), dp(34), 0, 0));
-        root.addView(topBar, matchWrap());
+        nativeTopBar.addView(statusView, rowWeightParams(1, dp(34), 0, dp(6)));
+        nativeTopBar.addView(scanButton, rowFixedParams(dp(56), dp(34), 0, dp(6)));
+        nativeTopBar.addView(settingsButton, rowFixedParams(dp(56), dp(34), 0, 0));
+        root.addView(nativeTopBar, matchWrap());
 
         webView = new WebView(this);
         configureWebView();
@@ -277,6 +278,9 @@ public class MainActivity extends Activity {
             @Override
             public void onReceivedError(WebView view, WebResourceRequest request, WebResourceError error) {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && request.isForMainFrame()) {
+                    if (nativeTopBar != null) {
+                        nativeTopBar.setVisibility(View.VISIBLE);
+                    }
                     setStatus("加载失败: " + error.getDescription(), "err");
                     updateConnectionHistoryStatus(baseUrl, "fail");
                 }
@@ -285,6 +289,39 @@ public class MainActivity extends Activity {
     }
 
     private class AndroidBridge {
+        @JavascriptInterface
+        public void scanPairing() {
+            main.post(() -> {
+                if (!isTrustedWebPage()) {
+                    setStatus("扫码失败: 页面来源不匹配", "err");
+                    return;
+                }
+                startQrScan();
+            });
+        }
+
+        @JavascriptInterface
+        public void openSettings() {
+            main.post(() -> {
+                if (!isTrustedWebPage()) {
+                    setStatus("设置失败: 页面来源不匹配", "err");
+                    return;
+                }
+                showSettingsDialog();
+            });
+        }
+
+        @JavascriptInterface
+        public void reloadTerminal() {
+            main.post(() -> {
+                if (!isTrustedWebPage()) {
+                    setStatus("刷新失败: 页面来源不匹配", "err");
+                    return;
+                }
+                loadTerminal();
+            });
+        }
+
         @JavascriptInterface
         public void updateWorkingCount(String value) {
             int count = 0;
@@ -305,6 +342,9 @@ public class MainActivity extends Activity {
         rememberConnection(baseUrl, token, "saved");
         String url = terminalUrl();
         workingCount = 0;
+        if (nativeTopBar != null) {
+            nativeTopBar.setVisibility(View.VISIBLE);
+        }
         setStatus("加载中", "work");
         webView.loadUrl(url);
     }
@@ -326,7 +366,11 @@ public class MainActivity extends Activity {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.KITKAT || webView == null) {
             return;
         }
-        webView.evaluateJavascript("(function(){var s=document.getElementById('easycodex-android-css');if(!s){s=document.createElement('style');s.id='easycodex-android-css';document.head.appendChild(s);}s.textContent='.terminal-statusbar{display:none!important;} .terminal-output{padding-top:10px!important;}';})();", null);
+        webView.evaluateJavascript("(function(){document.body.classList.add('android-webview');if(window.easycodexSetupAndroidBridge){window.easycodexSetupAndroidBridge();return '1';}return '0';})();", value -> {
+            if (nativeTopBar != null && "\"1\"".equals(value)) {
+                nativeTopBar.setVisibility(View.GONE);
+            }
+        });
     }
 
     private void showAttachmentChooser(WebChromeClient.FileChooserParams fileChooserParams) {
@@ -399,6 +443,18 @@ public class MainActivity extends Activity {
 
     private String terminalUrl() {
         return baseUrl + "/terminal#baseUrl=" + Uri.encode(baseUrl) + "&token=" + Uri.encode(token);
+    }
+
+    private boolean isTrustedWebPage() {
+        if (webView == null) {
+            return false;
+        }
+        String current = webView.getUrl();
+        if (current == null || current.trim().isEmpty()) {
+            return false;
+        }
+        String trusted = trimTrailingSlash(baseUrl);
+        return current.equals(trusted) || current.startsWith(trusted + "/") || current.startsWith(trusted + "#");
     }
 
     private void testConnection(boolean reloadOnSuccess) {

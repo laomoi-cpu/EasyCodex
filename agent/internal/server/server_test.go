@@ -682,8 +682,15 @@ func TestTerminalPageIsAvailableRemotely(t *testing.T) {
 		!strings.Contains(body, ".page-terminal main{max-width:none;height:100dvh") ||
 		!strings.Contains(body, ".pane-last{display:block") ||
 		!strings.Contains(body, ".pane-state{display:inline-flex") ||
+		!strings.Contains(body, ".pane-notify-dot{display:inline-block") ||
 		!strings.Contains(body, ".page-terminal .terminal-output{min-height:62dvh") ||
 		!strings.Contains(body, ".page-terminal .send-row{position:sticky") ||
+		!strings.Contains(body, `id="androidBridgeBar"`) ||
+		!strings.Contains(body, `id="androidBridgeScan"`) ||
+		!strings.Contains(body, `.page-terminal.android-webview .terminal-statusbar{display:none!important}`) ||
+		!strings.Contains(body, "function setupAndroidBridgeChrome()") ||
+		!strings.Contains(body, "window.easycodexSetupAndroidBridge = setupAndroidBridgeChrome") ||
+		!strings.Contains(body, "$('androidBridgeScan').onclick = () => callAndroidBridge('scanPairing')") ||
 		!strings.Contains(body, `id="mobileInputDialog"`) ||
 		!strings.Contains(body, `id="mobileCommandInput"`) ||
 		!strings.Contains(body, `id="mobileAddAttachment"`) ||
@@ -723,18 +730,25 @@ func TestTerminalPageIsAvailableRemotely(t *testing.T) {
 		!strings.Contains(body, "$('terminalCheckUpdate').onclick = () => checkTerminalServerUpdate()") ||
 		!strings.Contains(body, "function fitTerminalFont()") ||
 		!strings.Contains(body, "function applySessionsData(data)") ||
+		!strings.Contains(body, "state.paneWorking[paneId] === true && !isWorking") ||
+		!strings.Contains(body, "function clearPaneNotify(paneId, rerender)") ||
+		!strings.Contains(body, "const notify = paneHasNotify(pane.paneId)") ||
 		!strings.Contains(body, "function updateDocumentTitle()") ||
 		!strings.Contains(body, "baseDocumentTitle") ||
 		!strings.Contains(body, "function notifyAndroidWorkingCount()") ||
 		!strings.Contains(body, "window.EasyCodexAndroid.updateWorkingCount") ||
+		!strings.Contains(body, "function paneNotifyCount()") ||
+		!strings.Contains(body, "parts.push('Notify ' + notifyCount)") ||
+		!strings.Contains(body, "return terminalMachineName ? status + ' - ' + terminalMachineName : status") ||
 		!strings.Contains(body, "function snapshotPollInterval()") ||
 		!strings.Contains(body, "return isLocalBrowser() ? 300 : 1000") ||
 		!strings.Contains(body, "return isLocalBrowser() ? 300 : 2000") ||
 		!strings.Contains(body, "function markPaneInput(text)") ||
 		!strings.Contains(body, "recordInput: !!recordInput") ||
 		!strings.Contains(body, "row.onpointerdown = event =>") ||
-		!strings.Contains(body, "if (state.paneId === paneId)") ||
+		!strings.Contains(body, "const changed = state.paneId !== paneId") ||
 		!strings.Contains(body, "await sendRaw(appendAttachmentPaths(text, uploads), enter, true)") ||
+		!strings.Contains(body, "clearPaneNotify(state.paneId, true)") ||
 		!strings.Contains(body, "sendRaw(value[0], value[1], false)") ||
 		!strings.Contains(body, "refreshPaneList().catch(() => {})") ||
 		!strings.Contains(body, "function terminalShortcutFromEvent(event)") ||
