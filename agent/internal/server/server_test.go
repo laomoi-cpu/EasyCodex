@@ -848,6 +848,10 @@ func TestTerminalPageIsAvailableRemotely(t *testing.T) {
 		!strings.Contains(body, "/api/codex/sessions/' + encodeURIComponent(pane.codexSessionId) + '/title") ||
 		!strings.Contains(body, "return pane.displayTitle || pane.customTitle || pane.title || pane.cwd || ''") ||
 		!strings.Contains(body, "session.displayTitle || session.customTitle || session.summary || session.id") ||
+		!strings.Contains(body, "paneCodexSessionIds: {}") ||
+		!strings.Contains(body, "function hydratePaneCodexSession(pane, sessionDetail)") ||
+		!strings.Contains(body, "function codexSessionIdFromText(text)") ||
+		!strings.Contains(body, "rememberPaneCodexSession(paneId, codexSessionIdFromText(state.outputBuffers[paneId]))") ||
 		!strings.Contains(body, "function paneNotifyCount()") ||
 		!strings.Contains(body, "parts.push('Notify ' + notifyCount)") ||
 		!strings.Contains(body, "return terminalMachineName ? status + ' - ' + terminalMachineName : status") ||

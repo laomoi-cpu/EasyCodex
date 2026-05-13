@@ -765,7 +765,7 @@ const state = {
   defaults: {instanceId:'main', cwd:'D:\\mgame', command:['cmd.exe','/k','cd /d D:\\mgame && codex --dangerously-bypass-approvals-and-sandbox']},
   autoScrollTerminal: store.getItem('easycodex.autoScrollTerminal') !== 'false',
   terminalRetentionLines: 1000,
-  panes: [], paneId: '', workingCount: 0, confirmCount: 0, paneWorking: {}, paneConfirm: {}, paneNotify: {}, commandDrafts: {}, outputBuffers: {}, statusText: '', statusKind: '', snapshotHash: '', pollTimer: 0, pollToken: 0, selectedPane: null, attachments: [], codexSessions: [], selectedCodexSessionId: ''
+  panes: [], paneId: '', workingCount: 0, confirmCount: 0, paneWorking: {}, paneConfirm: {}, paneNotify: {}, commandDrafts: {}, outputBuffers: {}, paneCodexSessionIds: {}, statusText: '', statusKind: '', snapshotHash: '', pollTimer: 0, pollToken: 0, selectedPane: null, attachments: [], codexSessions: [], selectedCodexSessionId: ''
 };
 const mobileInputMedia = window.matchMedia ? window.matchMedia('(max-width: 760px)') : null;
 
@@ -1019,12 +1019,15 @@ function applySessionsData(data){
     if (isWorking || isConfirm) delete state.paneNotify[paneId];
     state.paneWorking[paneId] = isWorking;
     state.paneConfirm[paneId] = isConfirm;
+    if (pane.codexSessionId) state.paneCodexSessionIds[paneId] = pane.codexSessionId;
+    else if (state.paneCodexSessionIds[paneId]) pane.codexSessionId = state.paneCodexSessionIds[paneId];
   });
   Object.keys(state.paneWorking).forEach(paneId => { if (!seen[paneId]) delete state.paneWorking[paneId]; });
   Object.keys(state.paneConfirm).forEach(paneId => { if (!seen[paneId]) delete state.paneConfirm[paneId]; });
   Object.keys(state.paneNotify).forEach(paneId => { if (!seen[paneId]) delete state.paneNotify[paneId]; });
   Object.keys(state.commandDrafts).forEach(paneId => { if (!seen[paneId]) delete state.commandDrafts[paneId]; });
   Object.keys(state.outputBuffers).forEach(paneId => { if (!seen[paneId]) delete state.outputBuffers[paneId]; });
+  Object.keys(state.paneCodexSessionIds).forEach(paneId => { if (!seen[paneId]) delete state.paneCodexSessionIds[paneId]; });
   state.panes = nextPanes;
   state.workingCount = Number(data.workingCount === undefined ? state.panes.filter(pane => pane.isWorking).length : data.workingCount);
   state.confirmCount = Number(data.confirmCount === undefined ? state.panes.filter(pane => pane.isConfirm).length : data.confirmCount);
@@ -1148,6 +1151,7 @@ async function pollSnapshot(token){
       const paneId = state.paneId;
       const merged = mergeTerminalBuffer(state.outputBuffers[paneId] || '', data.text || '');
       state.outputBuffers[paneId] = trimTerminalLines(merged, state.terminalRetentionLines);
+      rememberPaneCodexSession(paneId, codexSessionIdFromText(state.outputBuffers[paneId]));
       renderTerminal(state.outputBuffers[paneId]);
     }
     setStatus(i18n.alreadyConnected, 'ok');
@@ -1551,7 +1555,7 @@ function showPaneDetails(pane){
   const details = $('dialogDetails');
   details.innerHTML = '';
   addDetail(details, i18n.dialogTitle, safeTitle(pane));
-  addDetail(details, i18n.codexSession || 'Codex session', pane.codexSessionId || '-');
+  const sessionDetail = addDetail(details, i18n.codexSession || 'Codex session', pane.codexSessionId || '-');
   addDetail(details, i18n.dialogPane, pane.paneId);
   addDetail(details, i18n.dialogWindowTab, (pane.windowId || 0) + ' / ' + (pane.tabId || 0));
   addDetail(details, i18n.dialogWorkspace, pane.workspace || '-');
@@ -1561,6 +1565,35 @@ function showPaneDetails(pane){
   $('customSessionTitle').disabled = !pane.codexSessionId;
   $('saveSessionTitle').disabled = !pane.codexSessionId;
   $('paneDialog').showModal();
+  hydratePaneCodexSession(pane, sessionDetail).catch(err => setStatus(err.message, 'err'));
+}
+async function hydratePaneCodexSession(pane, sessionDetail){
+  if (!pane || pane.codexSessionId) return;
+  let sessionID = codexSessionIdFromText(state.outputBuffers[pane.paneId] || '');
+  if (!sessionID) {
+    const data = await api('/api/instances/' + encodeURIComponent(state.instanceId) + '/panes/' + encodeURIComponent(pane.paneId) + '/snapshot?lines=120', {}, true);
+    sessionID = codexSessionIdFromText(data.text || '');
+  }
+  if (!sessionID || !state.selectedPane || state.selectedPane.paneId !== pane.paneId) return;
+  rememberPaneCodexSession(pane.paneId, sessionID);
+  pane.codexSessionId = sessionID;
+  sessionDetail.textContent = sessionID;
+  $('customSessionTitle').disabled = false;
+  $('saveSessionTitle').disabled = false;
+}
+function rememberPaneCodexSession(paneId, sessionID){
+  paneId = String(paneId || '');
+  sessionID = String(sessionID || '');
+  if (!paneId || !sessionID) return false;
+  state.paneCodexSessionIds[paneId] = sessionID;
+  state.panes.forEach(pane => {
+    if (String(pane.paneId || '') === paneId && !pane.codexSessionId) pane.codexSessionId = sessionID;
+  });
+  return true;
+}
+function codexSessionIdFromText(text){
+  const matches = String(text || '').match(/\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\b/g);
+  return matches && matches.length ? matches[matches.length - 1] : '';
 }
 async function saveCustomSessionTitle(){
   const pane = state.selectedPane;
@@ -1580,6 +1613,7 @@ function addDetail(box, name, value){
   dd.textContent = value || '-';
   box.appendChild(dt);
   box.appendChild(dd);
+  return dd;
 }
 function safeTitle(pane){ return pane.displayTitle || pane.customTitle || pane.title || pane.cwd || ''; }
 function activePane(){
