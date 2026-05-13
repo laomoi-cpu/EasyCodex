@@ -424,8 +424,8 @@ func terminalPageHTML(lang uiLang, machineName string, localRequest bool) string
     <section class="terminal-workbench">
       <div class="terminal-statusbar">
         <button id="connectionStatus" type="button" class="status-pill">%s</button>
-        <button id="toggleFullscreen" type="button" class="secondary icon-button" aria-label="%s" title="%s">⛶</button>
-        <button id="editConnection" type="button" class="secondary icon-button" aria-label="%s" title="%s">⚙</button>
+        <button id="toggleFullscreen" type="button" class="secondary icon-button" aria-label="%s" title="%s">&#x26F6;</button>
+        <button id="editConnection" type="button" class="secondary icon-button" aria-label="%s" title="%s">&#x2699;</button>
       </div>
       <pre id="terminalOutput" class="terminal-output">%s</pre>
       <div id="attachmentPanel" class="attachment-panel" hidden>
@@ -1435,7 +1435,7 @@ function unlockFullscreenOrientation(){
 function updateFullscreenButton(){
   const button = $('toggleFullscreen');
   const active = !!document.fullscreenElement;
-  button.textContent = active ? '�? : '�?;
+  button.textContent = active ? '\u2715' : '\u26F6';
   button.title = active ? (i18n.fullscreenExit || 'Exit Fullscreen') : (i18n.fullscreen || 'Fullscreen');
   button.setAttribute('aria-label', button.title);
 }
