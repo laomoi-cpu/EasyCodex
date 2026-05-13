@@ -1237,6 +1237,61 @@ function screenshotName(index){
   const pad = value => String(value).padStart(2, '0');
   return 'screenshot-' + d.getFullYear() + pad(d.getMonth() + 1) + pad(d.getDate()) + '-' + pad(d.getHours()) + pad(d.getMinutes()) + pad(d.getSeconds()) + (index ? '-' + index : '') + '.png';
 }
+function shouldInsertDroppedFilePaths(){
+  return isLocalBrowser() && !isMobileInputMode();
+}
+function insertCommandInputText(text){
+  const input = $('commandInput');
+  const value = input.value || '';
+  const start = Number.isFinite(input.selectionStart) ? input.selectionStart : value.length;
+  const end = Number.isFinite(input.selectionEnd) ? input.selectionEnd : start;
+  const before = value.slice(0, start);
+  const after = value.slice(end);
+  const prefix = before && !/\s$/.test(before) ? ' ' : '';
+  const suffix = after && !/^\s/.test(after) ? ' ' : '';
+  input.value = before + prefix + text + suffix + after;
+  const pos = (before + prefix + text).length;
+  input.focus();
+  try { input.setSelectionRange(pos, pos); } catch (_) {}
+}
+function droppedFilePaths(dataTransfer){
+  const paths = [];
+  const seen = new Set();
+  const add = value => {
+    const path = String(value || '').trim();
+    if (!path || seen.has(path) || !isLikelyLocalPath(path)) return;
+    seen.add(path);
+    paths.push(path);
+  };
+  Array.from((dataTransfer && dataTransfer.files) || []).forEach(file => add(file.path || file.mozFullPath || file.webkitRelativePath));
+  dropTextPaths(dataTransfer, 'text/uri-list').forEach(add);
+  dropTextPaths(dataTransfer, 'text/plain').forEach(add);
+  return paths;
+}
+function dropTextPaths(dataTransfer, type){
+  let text = '';
+  try { text = dataTransfer && dataTransfer.getData ? dataTransfer.getData(type) : ''; } catch (_) { text = ''; }
+  return String(text || '').split(/\r?\n/).map(line => line.trim()).filter(line => line && !line.startsWith('#')).map(line => fileURIToLocalPath(line) || line);
+}
+function fileURIToLocalPath(uri){
+  if (!/^file:/i.test(uri)) return '';
+  try {
+    const url = new URL(uri);
+    let path = decodeURIComponent(url.pathname || '');
+    if (url.hostname) path = '\\\\' + url.hostname + path.replace(/\//g, '\\');
+    else if (/^\/[A-Za-z]:/.test(path)) path = path.slice(1);
+    return path.replace(/\//g, '\\');
+  } catch (_) {
+    return '';
+  }
+}
+function isLikelyLocalPath(path){
+  return /^[A-Za-z]:[\\/]/.test(path) || /^\\\\/.test(path) || /^\//.test(path);
+}
+function pathForCommandInput(path){
+  const value = String(path || '').trim();
+  return /\s/.test(value) ? '"' + value.replace(/"/g, '\\"') + '"' : value;
+}
 function handlePaste(event){
   if ($('terminalApp').hidden) return;
   const items = event.clipboardData && event.clipboardData.items ? Array.from(event.clipboardData.items) : [];
@@ -1249,6 +1304,13 @@ function handleDrop(event){
   if ($('terminalApp').hidden) return;
   event.preventDefault();
   if (event.dataTransfer && event.dataTransfer.files && event.dataTransfer.files.length) {
+    if (shouldInsertDroppedFilePaths()) {
+      const paths = droppedFilePaths(event.dataTransfer);
+      if (paths.length) {
+        insertCommandInputText(paths.map(pathForCommandInput).join(' '));
+        return;
+      }
+    }
     addAttachmentFiles(event.dataTransfer.files);
   }
 }
@@ -1334,13 +1396,19 @@ function splitCommandArgs(value){
 function spawnCommandFromDialog(){
   if ($('spawnCommand').value === 'cmd') return ['cmd.exe','/k'];
   const args = splitCommandArgs($('codexArgs').value);
-  if (state.selectedCodexSessionId) return ['cmd.exe','/k','codex','resume'].concat(args, [state.selectedCodexSessionId]);
+  const selectedSession = selectedCodexSession();
+  if (selectedSession) return ['cmd.exe','/k','codex','resume'].concat(args, [selectedSession.id]);
   return ['cmd.exe','/k','codex'].concat(args);
+}
+function selectedCodexSession(){
+  if (!state.selectedCodexSessionId) return null;
+  return state.codexSessions.find(session => session.id === state.selectedCodexSessionId) || null;
 }
 async function loadCodexSessions(){
   $('codexSessionList').textContent = i18n.loading || 'Loading...';
   const data = await api('/api/codex/sessions?limit=20', {}, true);
   state.codexSessions = data.sessions || [];
+  if (!selectedCodexSession()) state.selectedCodexSessionId = '';
   renderCodexSessions();
 }
 function renderCodexSessions(){
@@ -1616,7 +1684,7 @@ function terminalShortcutFromEvent(event){
   if (!terminalKeyboardReady()) return '';
   if (event.key === 'Tab' && event.shiftKey && !event.ctrlKey && !event.altKey && !event.metaKey) return 'shifttab';
   if (!captureTerminalKeys(event.target)) return '';
-  if (event.ctrlKey && !event.altKey && !event.metaKey && !event.shiftKey && String(event.key).toLowerCase() === 'c') return 'ctrlc';
+  if (event.ctrlKey && !event.altKey && !event.metaKey && !event.shiftKey && String(event.key).toLowerCase() === 'c') return hasBrowserTextSelection() ? '' : 'ctrlc';
   if (event.ctrlKey || event.altKey || event.metaKey) return '';
   if (event.key === 'Enter') return 'enter';
   if (event.key === 'Escape') return 'esc';
@@ -1646,6 +1714,10 @@ function captureTerminalKeys(target){
   if (target.isContentEditable) return false;
   const tag = String(target.tagName || '').toLowerCase();
   return !['input','textarea','select'].includes(tag);
+}
+function hasBrowserTextSelection(){
+  const selection = window.getSelection && window.getSelection();
+  return !!selection && !selection.isCollapsed && String(selection.toString()).length > 0;
 }
 document.addEventListener('keydown', event => {
   const key = terminalShortcutFromEvent(event);

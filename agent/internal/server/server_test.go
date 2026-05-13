@@ -754,6 +754,12 @@ func TestTerminalPageIsAvailableRemotely(t *testing.T) {
 		!strings.Contains(body, "function openMobileInputDialog()") ||
 		!strings.Contains(body, "function syncMobileCommandInputMode()") ||
 		!strings.Contains(body, "function renderAttachmentPanel(panelId, summaryId, listId)") ||
+		!strings.Contains(body, "function shouldInsertDroppedFilePaths()") ||
+		!strings.Contains(body, "return isLocalBrowser() && !isMobileInputMode()") ||
+		!strings.Contains(body, "function droppedFilePaths(dataTransfer)") ||
+		!strings.Contains(body, "function insertCommandInputText(text)") ||
+		!strings.Contains(body, "function fileURIToLocalPath(uri)") ||
+		!strings.Contains(body, "insertCommandInputText(paths.map(pathForCommandInput).join(' '))") ||
 		!strings.Contains(body, "$('commandInput').addEventListener('pointerdown', handleCommandInputIntent)") ||
 		!strings.Contains(body, "$('mobileInputSend').onclick = () => sendMobileInput().catch") ||
 		!strings.Contains(body, "$('mobileAddAttachment').onclick = () => $('attachmentInput').click()") ||
@@ -815,7 +821,10 @@ func TestTerminalPageIsAvailableRemotely(t *testing.T) {
 		!strings.Contains(body, "sendRaw(value[0], value[1], false)") ||
 		!strings.Contains(body, "refreshPaneList().catch(() => {})") ||
 		!strings.Contains(body, "function terminalShortcutFromEvent(event)") ||
+		!strings.Contains(body, "return hasBrowserTextSelection() ? '' : 'ctrlc'") ||
 		!strings.Contains(body, "function terminalKeyboardReady()") ||
+		!strings.Contains(body, "function hasBrowserTextSelection()") ||
+		!strings.Contains(body, "window.getSelection && window.getSelection()") ||
 		!strings.Contains(body, "document.body.classList.contains('page-terminal')") ||
 		!strings.Contains(body, "event.key === 'Tab' && event.shiftKey") ||
 		!strings.Contains(body, "document.addEventListener('keydown'") ||
@@ -827,6 +836,9 @@ func TestTerminalPageIsAvailableRemotely(t *testing.T) {
 		!strings.Contains(body, "$('newSession').onclick = () => openSpawnDialog()") ||
 		!strings.Contains(body, "/api/codex/sessions?limit=20") ||
 		!strings.Contains(body, "['cmd.exe','/k','codex','resume']") ||
+		!strings.Contains(body, "function selectedCodexSession()") ||
+		!strings.Contains(body, "const selectedSession = selectedCodexSession()") ||
+		!strings.Contains(body, "if (!selectedCodexSession()) state.selectedCodexSessionId = ''") ||
 		!strings.Contains(body, "if (session.cwd) $('spawnCwd').value = spawnCwdFromValue(session.cwd)") ||
 		!strings.Contains(body, "snapshot?lines=180&escapes=1") ||
 		strings.Contains(body, `id="refreshSessions"`) ||
