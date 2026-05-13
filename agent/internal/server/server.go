@@ -155,6 +155,10 @@ type codexSessionTitleRequest struct {
 	Title string `json:"title"`
 }
 
+type paneCodexSessionRequest struct {
+	CodexSessionID string `json:"codexSessionId"`
+}
+
 type attachmentUpload struct {
 	OriginalName string `json:"originalName"`
 	FileName     string `json:"fileName"`
@@ -302,6 +306,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/instances/{instanceID}/sessions", s.auth(s.sessions))
 	mux.HandleFunc("GET /api/instances/{instanceID}/panes/{paneID}/text", s.auth(s.paneText))
 	mux.HandleFunc("GET /api/instances/{instanceID}/panes/{paneID}/snapshot", s.auth(s.paneSnapshot))
+	mux.HandleFunc("PUT /api/instances/{instanceID}/panes/{paneID}/codex-session", s.auth(s.savePaneCodexSession))
 	mux.HandleFunc("POST /api/instances/{instanceID}/panes/{paneID}/attachments", s.auth(s.uploadAttachments))
 	mux.HandleFunc("POST /api/instances/{instanceID}/panes/{paneID}/send", s.auth(s.sendText))
 	mux.HandleFunc("DELETE /api/instances/{instanceID}/panes/{paneID}", s.auth(s.deletePane))
@@ -629,6 +634,34 @@ func (s *Server) paneSnapshot(w http.ResponseWriter, r *http.Request) {
 		data["text"] = text
 	}
 	writeOK(w, http.StatusOK, data)
+}
+
+func (s *Server) savePaneCodexSession(w http.ResponseWriter, r *http.Request) {
+	instance, ok := s.instance(w, r)
+	if !ok {
+		return
+	}
+	paneID := r.PathValue("paneID")
+	if !validID(paneID) {
+		writeError(w, http.StatusBadRequest, errors.New("invalid pane id"))
+		return
+	}
+	var body paneCodexSessionRequest
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	sessionID := strings.TrimSpace(body.CodexSessionID)
+	if !validCodexSessionID(sessionID) {
+		writeError(w, http.StatusBadRequest, errors.New("invalid codex session id"))
+		return
+	}
+	s.recordPaneCodexSession(instance.ID, paneID, sessionID)
+	writeOK(w, http.StatusOK, map[string]any{
+		"instance":       instance.ID,
+		"paneId":         paneID,
+		"codexSessionId": sessionID,
+	})
 }
 
 func (s *Server) uploadAttachments(w http.ResponseWriter, r *http.Request) {

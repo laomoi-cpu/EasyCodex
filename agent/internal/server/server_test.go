@@ -850,6 +850,8 @@ func TestTerminalPageIsAvailableRemotely(t *testing.T) {
 		!strings.Contains(body, "session.displayTitle || session.customTitle || session.summary || session.id") ||
 		!strings.Contains(body, "paneCodexSessionIds: {}") ||
 		!strings.Contains(body, "function hydratePaneCodexSession(pane, sessionDetail)") ||
+		!strings.Contains(body, "function recordPaneCodexSession(paneId, sessionID)") ||
+		!strings.Contains(body, "/panes/' + encodeURIComponent(paneId) + '/codex-session") ||
 		!strings.Contains(body, "function codexSessionIdFromText(text)") ||
 		!strings.Contains(body, "rememberPaneCodexSession(paneId, codexSessionIdFromText(state.outputBuffers[paneId]))") ||
 		!strings.Contains(body, "function paneNotifyCount()") ||
@@ -1751,5 +1753,63 @@ func TestSpawnRecordsExplicitCodexSessionID(t *testing.T) {
 	inputs := srv.paneInputsSnapshot("main")
 	if inputs["9"].CodexSessionID != sessionID {
 		t.Fatalf("codex session id was not recorded: %#v", inputs)
+	}
+}
+
+func TestSavePaneCodexSessionRecordsMapping(t *testing.T) {
+	srv, _ := testServer(t)
+	sessionID := "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+	req := httptest.NewRequest(http.MethodPut, "/api/instances/main/panes/3/codex-session", bytes.NewBufferString(`{"codexSessionId":"`+sessionID+`"}`))
+	req.Header.Set("Authorization", "Bearer secret")
+	rec := httptest.NewRecorder()
+
+	srv.Handler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d body = %s", rec.Code, rec.Body.String())
+	}
+	inputs := srv.paneInputsSnapshot("main")
+	if inputs["3"].CodexSessionID != sessionID {
+		t.Fatalf("codex session id was not recorded: %#v", inputs)
+	}
+}
+
+func TestSaveTitleAfterPaneCodexSessionMapping(t *testing.T) {
+	srv, _ := testServer(t)
+	sessionID := "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+	mapReq := httptest.NewRequest(http.MethodPut, "/api/instances/main/panes/3/codex-session", bytes.NewBufferString(`{"codexSessionId":"`+sessionID+`"}`))
+	mapReq.Header.Set("Authorization", "Bearer secret")
+	mapRec := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(mapRec, mapReq)
+	if mapRec.Code != http.StatusOK {
+		t.Fatalf("mapping status = %d body = %s", mapRec.Code, mapRec.Body.String())
+	}
+
+	titleReq := httptest.NewRequest(http.MethodPut, "/api/codex/sessions/"+sessionID+"/title", bytes.NewBufferString(`{"title":"Battle tools"}`))
+	titleReq.Header.Set("Authorization", "Bearer secret")
+	titleRec := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(titleRec, titleReq)
+	if titleRec.Code != http.StatusOK {
+		t.Fatalf("title status = %d body = %s", titleRec.Code, titleRec.Body.String())
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/instances/main/sessions", nil)
+	req.Header.Set("Authorization", "Bearer secret")
+	rec := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("sessions status = %d body = %s", rec.Code, rec.Body.String())
+	}
+	var payload struct {
+		OK   bool `json:"ok"`
+		Data struct {
+			Panes []paneSession `json:"panes"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("invalid json: %v", err)
+	}
+	if !payload.OK || payload.Data.Panes[0].CodexSessionID != sessionID || payload.Data.Panes[0].CustomTitle != "Battle tools" || payload.Data.Panes[0].DisplayTitle != "Battle tools" {
+		t.Fatalf("unexpected panes: %#v", payload.Data.Panes)
 	}
 }

@@ -1576,10 +1576,14 @@ async function hydratePaneCodexSession(pane, sessionDetail){
   }
   if (!sessionID || !state.selectedPane || state.selectedPane.paneId !== pane.paneId) return;
   rememberPaneCodexSession(pane.paneId, sessionID);
+  await recordPaneCodexSession(pane.paneId, sessionID);
   pane.codexSessionId = sessionID;
   sessionDetail.textContent = sessionID;
   $('customSessionTitle').disabled = false;
   $('saveSessionTitle').disabled = false;
+}
+async function recordPaneCodexSession(paneId, sessionID){
+  await api('/api/instances/' + encodeURIComponent(state.instanceId) + '/panes/' + encodeURIComponent(paneId) + '/codex-session', {method:'PUT', body:{codexSessionId: sessionID}}, true);
 }
 function rememberPaneCodexSession(paneId, sessionID){
   paneId = String(paneId || '');
@@ -1603,6 +1607,15 @@ async function saveCustomSessionTitle(){
   }
   const title = $('customSessionTitle').value || '';
   await api('/api/codex/sessions/' + encodeURIComponent(pane.codexSessionId) + '/title', {method:'PUT', body:{title}}, true);
+  pane.customTitle = title;
+  pane.displayTitle = title || pane.title || pane.cwd || '';
+  state.panes.forEach(item => {
+    if (String(item.paneId || '') === String(pane.paneId || '')) {
+      item.customTitle = pane.customTitle;
+      item.displayTitle = pane.displayTitle;
+    }
+  });
+  renderPanes();
   setStatus(i18n.sessionTitleSaved || 'Session title saved', 'ok');
   await loadSessions();
 }
