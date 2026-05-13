@@ -748,7 +748,7 @@ const store = window.localStorage;
 const ansiColors = [0x000000,0xcc5555,0x55cc55,0xcdcd55,0x5455cb,0xcc55cc,0x7acaca,0xcccccc,0x555555,0xff5555,0x55ff55,0xffff55,0x5555ff,0xff55ff,0x55ffff,0xffffff];
 const baseDocumentTitle = document.title.replace(new RegExp('\\s+' + escapeRegExp(i18n.terminal) + '$'), '').trim() || document.title;
 const state = {
-  baseUrl: store.getItem('easycodex.baseUrl') || location.origin,
+  baseUrl: initialBaseURL(),
   token: store.getItem('easycodex.token') || '',
   clientId: browserClientId(),
   instanceId: 'main',
@@ -782,8 +782,22 @@ function initFromHash(){
   history.replaceState(null, '', location.pathname);
 }
 function trimSlash(value){ return String(value || '').trim().replace(/\/+$/, ''); }
+function initialBaseURL(){
+  if (isLocalBrowser()) return location.origin;
+  return store.getItem('easycodex.baseUrl') || location.origin;
+}
 function isLocalBrowser(){
-  return location.hostname === '127.0.0.1';
+  return isLocalHost(location.hostname);
+}
+function isLocalHost(hostname){
+  const value = String(hostname || '').toLowerCase();
+  return value === '127.0.0.1' || value === 'localhost' || value === '::1' || value === '[::1]';
+}
+function sameOriginBaseUrl(value){
+  try { return new URL(value || '', location.href).origin === location.origin; } catch (_) { return false; }
+}
+function shouldAutoConnectWithoutToken(){
+  return isLocalBrowser() && sameOriginBaseUrl(state.baseUrl);
 }
 function snapshotPollInterval(){
   return isLocalBrowser() ? 300 : 1000;
@@ -1693,7 +1707,7 @@ function format(text, values){ return String(text).replace(/\{(\w+)\}/g, (_, key
 initFromHash();
 $('baseUrl').value = state.baseUrl;
 $('browserToken').value = state.token;
-showConnect(!state.token);
+showConnect(!(state.token || shouldAutoConnectWithoutToken()));
 $('connectForm').addEventListener('submit', event => { event.preventDefault(); connect().catch(err => setStatus(err.message, 'err')); });
 $('connectionStatus').onclick = () => connect().catch(err => setStatus(err.message, 'err'));
 $('androidBridgeStatus').onclick = () => connect().catch(err => setStatus(err.message, 'err'));
@@ -1816,7 +1830,7 @@ updateFullscreenButton();
 setupAndroidBridgeChrome();
 syncMobileCommandInputMode();
 setKeyPanel(false);
-if (state.token) connect().catch(err => { showConnect(true); setStatus(err.message, 'err'); });
+if (state.token || shouldAutoConnectWithoutToken()) connect().catch(err => { showConnect(true); setStatus(err.message, 'err'); });
 `
 }
 

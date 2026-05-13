@@ -1321,7 +1321,8 @@ func (s *Server) instance(w http.ResponseWriter, r *http.Request) (config.Instan
 func (s *Server) auth(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		cfg := s.configSnapshot()
-		if cfg.Token == "" {
+		if cfg.Token == "" || isLocalRequest(r) {
+			s.recordClient(r)
 			next(w, r)
 			return
 		}

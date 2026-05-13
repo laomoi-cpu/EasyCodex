@@ -846,6 +846,10 @@ func TestTerminalPageIsAvailableRemotely(t *testing.T) {
 		!strings.Contains(body, "parts.push('Notify ' + notifyCount)") ||
 		!strings.Contains(body, "return terminalMachineName ? status + ' - ' + terminalMachineName : status") ||
 		!strings.Contains(body, "function snapshotPollInterval()") ||
+		!strings.Contains(body, "function initialBaseURL()") ||
+		!strings.Contains(body, "function shouldAutoConnectWithoutToken()") ||
+		!strings.Contains(body, "showConnect(!(state.token || shouldAutoConnectWithoutToken()))") ||
+		!strings.Contains(body, "if (state.token || shouldAutoConnectWithoutToken()) connect().catch") ||
 		!strings.Contains(body, "return isLocalBrowser() ? 300 : 1000") ||
 		!strings.Contains(body, "return isLocalBrowser() ? 300 : 2000") ||
 		!strings.Contains(body, "function markPaneInput(text)") ||
@@ -1046,6 +1050,19 @@ func TestInstancesRequiresAuth(t *testing.T) {
 	srv.Handler().ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d body = %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestInstancesAllowsLocalRequestWithoutAuth(t *testing.T) {
+	srv, _ := testServer(t)
+	req := httptest.NewRequest(http.MethodGet, "/api/instances", nil)
+	req.RemoteAddr = "127.0.0.1:12345"
+	rec := httptest.NewRecorder()
+
+	srv.Handler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d body = %s", rec.Code, rec.Body.String())
 	}
 }
