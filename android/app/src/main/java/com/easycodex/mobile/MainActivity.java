@@ -72,6 +72,7 @@ public class MainActivity extends Activity {
 
     private WebView webView;
     private LinearLayout nativeTopBar;
+    private boolean webChromeOwnsTopBar;
     private TextView statusView;
     private ValueCallback<Uri[]> fileChooserCallback;
 
@@ -342,6 +343,7 @@ public class MainActivity extends Activity {
         rememberConnection(baseUrl, token, "saved");
         String url = terminalUrl();
         workingCount = 0;
+        webChromeOwnsTopBar = false;
         if (nativeTopBar != null) {
             nativeTopBar.setVisibility(View.VISIBLE);
         }
@@ -363,12 +365,24 @@ public class MainActivity extends Activity {
     }
 
     private void applyAndroidPageChrome() {
+        applyAndroidPageChrome(0);
+    }
+
+    private void applyAndroidPageChrome(int attempt) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.KITKAT || webView == null) {
             return;
         }
-        webView.evaluateJavascript("(function(){document.body.classList.add('android-webview');if(window.easycodexSetupAndroidBridge){window.easycodexSetupAndroidBridge();return '1';}return '0';})();", value -> {
-            if (nativeTopBar != null && "\"1\"".equals(value)) {
+        webView.evaluateJavascript("(function(){document.body.classList.add('android-webview');var bar=document.getElementById('androidBridgeBar');if(window.easycodexSetupAndroidBridge){window.easycodexSetupAndroidBridge();}return (bar||window.easycodexSetupAndroidBridge)?'1':'0';})();", value -> {
+            if (nativeTopBar == null) {
+                return;
+            }
+            if ("\"1\"".equals(value) || "1".equals(value) || "true".equals(value)) {
+                webChromeOwnsTopBar = true;
                 nativeTopBar.setVisibility(View.GONE);
+                return;
+            }
+            if (attempt < 12) {
+                main.postDelayed(() -> applyAndroidPageChrome(attempt + 1), 250);
             }
         });
     }
