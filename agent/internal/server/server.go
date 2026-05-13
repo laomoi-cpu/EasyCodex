@@ -13,6 +13,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
@@ -43,21 +44,25 @@ type WezTerm interface {
 }
 
 type Server struct {
-	mu         sync.RWMutex
-	cfg        config.Config
-	configPath string
-	wezterm    WezTerm
-	instances  map[string]config.Instance
-	clients    map[string]clientConnection
-	paneInputs map[string]paneInput
-	restart    func()
-	updateJob  updateJobStatus
-	logger     *slog.Logger
+	mu              sync.RWMutex
+	cfg             config.Config
+	configPath      string
+	wezterm         WezTerm
+	instances       map[string]config.Instance
+	clients         map[string]clientConnection
+	paneInputs      map[string]paneInput
+	restart         func()
+	updateJob       updateJobStatus
+	codexCache      []codexSessionItem
+	codexCacheAt    time.Time
+	codexCacheLimit int
+	logger          *slog.Logger
 }
 
 type paneInput struct {
-	Text      string
-	UpdatedAt time.Time
+	Text           string
+	CodexSessionID string
+	UpdatedAt      time.Time
 }
 
 type pairingResponse struct {
@@ -144,6 +149,10 @@ type sendTextRequest struct {
 	RecordInput      *bool  `json:"recordInput,omitempty"`
 }
 
+type codexSessionTitleRequest struct {
+	Title string `json:"title"`
+}
+
 type attachmentUpload struct {
 	OriginalName string `json:"originalName"`
 	FileName     string `json:"fileName"`
@@ -153,11 +162,13 @@ type attachmentUpload struct {
 }
 
 type codexSessionItem struct {
-	ID        string `json:"id"`
-	CWD       string `json:"cwd,omitempty"`
-	Timestamp string `json:"timestamp,omitempty"`
-	Summary   string `json:"summary,omitempty"`
-	Path      string `json:"path,omitempty"`
+	ID           string `json:"id"`
+	CWD          string `json:"cwd,omitempty"`
+	Timestamp    string `json:"timestamp,omitempty"`
+	Summary      string `json:"summary,omitempty"`
+	CustomTitle  string `json:"customTitle,omitempty"`
+	DisplayTitle string `json:"displayTitle,omitempty"`
+	Path         string `json:"path,omitempty"`
 }
 
 type weztermPane struct {
@@ -184,6 +195,7 @@ type weztermPane struct {
 type sessionTree struct {
 	Instance     string          `json:"instance"`
 	WorkingCount int             `json:"workingCount"`
+	ConfirmCount int             `json:"confirmCount"`
 	Windows      []windowSession `json:"windows"`
 	Panes        []paneSession   `json:"panes"`
 }
@@ -209,12 +221,16 @@ type paneSession struct {
 	WindowID         int             `json:"windowId"`
 	TabID            int             `json:"tabId"`
 	Title            string          `json:"title"`
+	DisplayTitle     string          `json:"displayTitle,omitempty"`
+	CustomTitle      string          `json:"customTitle,omitempty"`
+	CodexSessionID   string          `json:"codexSessionId,omitempty"`
 	CWD              string          `json:"cwd"`
 	LastInput        string          `json:"lastInput,omitempty"`
 	LastInputAt      string          `json:"lastInputAt,omitempty"`
 	Workspace        string          `json:"workspace"`
 	IsActive         bool            `json:"isActive"`
 	IsWorking        bool            `json:"isWorking"`
+	IsConfirm        bool            `json:"isConfirm"`
 	IsZoomed         bool            `json:"isZoomed"`
 	CursorX          int             `json:"cursorX"`
 	CursorY          int             `json:"cursorY"`
@@ -270,6 +286,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/mobile-pair", s.mobilePair)
 	mux.HandleFunc("GET /api/config", s.auth(s.appConfig))
 	mux.HandleFunc("GET /api/codex/sessions", s.auth(s.codexSessions))
+	mux.HandleFunc("PUT /api/codex/sessions/{sessionID}/title", s.auth(s.saveCodexSessionTitle))
 	mux.HandleFunc("GET /api/settings", s.localOnly(s.settings))
 	mux.HandleFunc("GET /api/connections", s.localOnly(s.connections))
 	mux.HandleFunc("GET /api/network-tests", s.localOnly(s.networkTests))
@@ -437,12 +454,52 @@ func (s *Server) appConfig(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) codexSessions(w http.ResponseWriter, r *http.Request) {
 	limit := parsePositiveInt(r.URL.Query().Get("limit"), 20, 100)
-	sessions, err := recentCodexSessions(limit)
+	sessions, err := s.recentCodexSessionsCached(limit)
 	if err != nil {
 		writeError(w, http.StatusBadGateway, err)
 		return
 	}
+	s.applyCodexSessionTitles(sessions)
 	writeOK(w, http.StatusOK, map[string]any{"sessions": sessions})
+}
+
+func (s *Server) saveCodexSessionTitle(w http.ResponseWriter, r *http.Request) {
+	sessionID := strings.TrimSpace(r.PathValue("sessionID"))
+	if !validCodexSessionID(sessionID) {
+		writeError(w, http.StatusBadRequest, errors.New("invalid codex session id"))
+		return
+	}
+	var body codexSessionTitleRequest
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	title := strings.TrimSpace(body.Title)
+	if len([]rune(title)) > 80 {
+		writeError(w, http.StatusBadRequest, errors.New("title must be 80 characters or fewer"))
+		return
+	}
+
+	next := s.configSnapshot()
+	if next.CodexSessionTitles == nil {
+		next.CodexSessionTitles = map[string]string{}
+	}
+	if title == "" {
+		delete(next.CodexSessionTitles, sessionID)
+	} else {
+		next.CodexSessionTitles[sessionID] = title
+	}
+	config.Normalize(&next)
+	if err := config.Save(s.configPath, next); err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	s.setConfig(next)
+	writeOK(w, http.StatusOK, map[string]any{
+		"sessionId": sessionID,
+		"title":     title,
+		"titles":    next.CodexSessionTitles,
+	})
 }
 
 func (s *Server) mobileDefaultsResponse() mobileDefaultsResponse {
@@ -501,6 +558,7 @@ func (s *Server) sessions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.attachPaneInputs(instance.ID, &tree)
+	s.attachCodexSessionTitles(instance.ID, &tree)
 	writeOK(w, http.StatusOK, tree)
 }
 
@@ -797,12 +855,21 @@ func (s *Server) activePaneID(ctx context.Context, instance config.Instance) (st
 
 func (s *Server) recordPaneInput(instanceID, paneID, text string) {
 	summary := summarizePaneInput(text, 20)
-	if summary == "" {
+	codexSessionID := codexSessionIDFromCommand(text)
+	if summary == "" && codexSessionID == "" {
 		return
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.paneInputs[paneInputKey(instanceID, paneID)] = paneInput{Text: summary, UpdatedAt: time.Now()}
+	input := s.paneInputs[paneInputKey(instanceID, paneID)]
+	if summary != "" {
+		input.Text = summary
+	}
+	if codexSessionID != "" {
+		input.CodexSessionID = codexSessionID
+	}
+	input.UpdatedAt = time.Now()
+	s.paneInputs[paneInputKey(instanceID, paneID)] = input
 }
 
 func (s *Server) attachPaneInputs(instanceID string, tree *sessionTree) {
@@ -831,6 +898,77 @@ func (s *Server) attachPaneInputs(instanceID string, tree *sessionTree) {
 
 func paneInputKey(instanceID, paneID string) string {
 	return instanceID + "\x00" + paneID
+}
+
+func (s *Server) attachCodexSessionTitles(instanceID string, tree *sessionTree) {
+	cfg := s.configSnapshot()
+	if cfg.CodexSessionTitles == nil {
+		cfg.CodexSessionTitles = map[string]string{}
+	}
+	inputs := s.paneInputsSnapshot(instanceID)
+	recent, err := s.recentCodexSessionsCached(100)
+	if err != nil {
+		recent = nil
+	}
+	recentByCWD := map[string]string{}
+	for _, item := range recent {
+		key := cwdKey(item.CWD)
+		if key != "" {
+			if _, exists := recentByCWD[key]; !exists {
+				recentByCWD[key] = item.ID
+			}
+		}
+	}
+	enrich := func(pane *paneSession) {
+		input := inputs[pane.PaneID]
+		sessionID := input.CodexSessionID
+		if sessionID == "" {
+			sessionID = recentByCWD[cwdKey(pane.CWD)]
+		}
+		if sessionID == "" {
+			return
+		}
+		pane.CodexSessionID = sessionID
+		if title := cfg.CodexSessionTitles[sessionID]; title != "" {
+			pane.CustomTitle = title
+			pane.DisplayTitle = title
+		}
+	}
+	for i := range tree.Panes {
+		enrich(&tree.Panes[i])
+	}
+	for wIndex := range tree.Windows {
+		for tIndex := range tree.Windows[wIndex].Tabs {
+			for pIndex := range tree.Windows[wIndex].Tabs[tIndex].Panes {
+				enrich(&tree.Windows[wIndex].Tabs[tIndex].Panes[pIndex])
+			}
+		}
+	}
+}
+
+func (s *Server) applyCodexSessionTitles(items []codexSessionItem) {
+	cfg := s.configSnapshot()
+	for i := range items {
+		if title := cfg.CodexSessionTitles[items[i].ID]; title != "" {
+			items[i].CustomTitle = title
+			items[i].DisplayTitle = title
+		} else {
+			items[i].DisplayTitle = items[i].Summary
+		}
+	}
+}
+
+func (s *Server) paneInputsSnapshot(instanceID string) map[string]paneInput {
+	prefix := instanceID + "\x00"
+	items := map[string]paneInput{}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for key, input := range s.paneInputs {
+		if strings.HasPrefix(key, prefix) {
+			items[strings.TrimPrefix(key, prefix)] = input
+		}
+	}
+	return items
 }
 
 func shouldRecordPaneInput(text string, explicit *bool) bool {
@@ -954,6 +1092,33 @@ func recentCodexSessions(limit int) ([]codexSessionItem, error) {
 	return items, nil
 }
 
+func (s *Server) recentCodexSessionsCached(limit int) ([]codexSessionItem, error) {
+	const maxAge = 5 * time.Second
+	now := time.Now()
+	s.mu.RLock()
+	if s.codexCacheLimit >= limit && now.Sub(s.codexCacheAt) < maxAge {
+		end := limit
+		if end > len(s.codexCache) {
+			end = len(s.codexCache)
+		}
+		items := append([]codexSessionItem(nil), s.codexCache[:end]...)
+		s.mu.RUnlock()
+		return items, nil
+	}
+	s.mu.RUnlock()
+
+	items, err := recentCodexSessions(limit)
+	if err != nil {
+		return nil, err
+	}
+	s.mu.Lock()
+	s.codexCache = append([]codexSessionItem(nil), items...)
+	s.codexCacheAt = now
+	s.codexCacheLimit = limit
+	s.mu.Unlock()
+	return append([]codexSessionItem(nil), items...), nil
+}
+
 func readCodexSessionItem(path string) (codexSessionItem, bool) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -1062,6 +1227,60 @@ func codexSessionIDFromPath(path string) string {
 		}
 	}
 	return ""
+}
+
+func codexSessionIDFromCommand(text string) string {
+	fields := strings.Fields(strings.TrimSpace(strings.ReplaceAll(text, "\r", "\n")))
+	seenCodex := false
+	for i, field := range fields {
+		command := strings.Trim(strings.ToLower(field), `"'`)
+		if command == "codex" || command == "codex.exe" {
+			seenCodex = true
+			continue
+		}
+		if seenCodex && strings.EqualFold(field, "resume") && i+1 < len(fields) {
+			candidate := strings.Trim(fields[i+1], `"'`)
+			if validCodexSessionID(candidate) {
+				return candidate
+			}
+		}
+	}
+	return ""
+}
+
+func validCodexSessionID(value string) bool {
+	if len(value) < 8 || len(value) > 128 {
+		return false
+	}
+	for _, ch := range value {
+		if (ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || ch == '-' || ch == '_' {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
+func cwdKey(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+	if strings.HasPrefix(strings.ToLower(value), "file:") {
+		if parsed, err := url.Parse(value); err == nil {
+			value = parsed.Path
+			if unescaped, err := url.PathUnescape(value); err == nil {
+				value = unescaped
+			}
+			if len(value) >= 3 && value[0] == '/' && value[2] == ':' {
+				value = value[1:]
+			}
+		}
+	}
+	value = strings.ReplaceAll(value, "/", `\`)
+	value = filepath.Clean(value)
+	value = strings.TrimRight(value, `\`)
+	return strings.ToLower(value)
 }
 
 func summarizePaneInput(text string, limit int) string {
@@ -1392,7 +1611,21 @@ func cloneConfig(cfg config.Config) config.Config {
 	cfg.AutoLaunch = append([]string(nil), cfg.AutoLaunch...)
 	cfg.Instances = append([]config.Instance(nil), cfg.Instances...)
 	cfg.MobileDefaults.Command = append([]string(nil), cfg.MobileDefaults.Command...)
+	if cfg.CodexSessionTitles != nil {
+		cfg.CodexSessionTitles = cloneStringMap(cfg.CodexSessionTitles)
+	}
 	return cfg
+}
+
+func cloneStringMap(values map[string]string) map[string]string {
+	if values == nil {
+		return nil
+	}
+	cloned := make(map[string]string, len(values))
+	for key, value := range values {
+		cloned[key] = value
+	}
+	return cloned
 }
 
 func changedRestartFields(before, after config.Config) []string {
@@ -1581,6 +1814,9 @@ func normalizeSessions(instanceID string, data json.RawMessage) (sessionTree, er
 		if pane.IsWorking {
 			tree.WorkingCount++
 		}
+		if pane.IsConfirm {
+			tree.ConfirmCount++
+		}
 		tree.Panes = append(tree.Panes, pane)
 
 		wIndex, ok := windowIndex[raw.WindowID]
@@ -1633,6 +1869,7 @@ func normalizeSessions(instanceID string, data json.RawMessage) (sessionTree, er
 }
 
 func paneFromWezTerm(raw weztermPane) paneSession {
+	isWorking := isWorkingPane(raw)
 	return paneSession{
 		PaneID:           strconv.Itoa(raw.PaneID),
 		WindowID:         raw.WindowID,
@@ -1641,7 +1878,8 @@ func paneFromWezTerm(raw weztermPane) paneSession {
 		CWD:              raw.CWD,
 		Workspace:        raw.Workspace,
 		IsActive:         raw.IsActive,
-		IsWorking:        isWorkingPane(raw),
+		IsWorking:        isWorking,
+		IsConfirm:        !isWorking && isConfirmPane(raw),
 		IsZoomed:         raw.IsZoomed,
 		CursorX:          raw.CursorX,
 		CursorY:          raw.CursorY,
@@ -1664,6 +1902,30 @@ func isWorkingPane(raw weztermPane) bool {
 	original := raw.Title + " " + raw.TabTitle
 	for _, frame := range codexSpinnerFrames {
 		if strings.Contains(original, frame) {
+			return true
+		}
+	}
+	return false
+}
+
+func isConfirmPane(raw weztermPane) bool {
+	original := strings.TrimSpace(raw.Title + " " + raw.TabTitle)
+	lower := strings.ToLower(original)
+	if strings.HasPrefix(strings.TrimSpace(raw.Title), "?") || strings.HasPrefix(strings.TrimSpace(raw.TabTitle), "?") ||
+		strings.HasPrefix(strings.TrimSpace(raw.Title), "？") || strings.HasPrefix(strings.TrimSpace(raw.TabTitle), "？") {
+		return true
+	}
+	for _, marker := range []string{
+		"confirm",
+		"approval",
+		"approve",
+		"waiting for input",
+		"waiting input",
+		"needs input",
+		"plan mode",
+		"planning",
+	} {
+		if strings.Contains(lower, marker) {
 			return true
 		}
 	}

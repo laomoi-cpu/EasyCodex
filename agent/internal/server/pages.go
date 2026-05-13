@@ -472,6 +472,12 @@ func terminalPageHTML(lang uiLang, machineName string) string {
 <dialog id="paneDialog" class="pane-dialog">
   <h2 id="dialogTitle">%s</h2>
   <dl id="dialogDetails" class="kv"></dl>
+  <div class="connect-form session-title-editor">
+    <label><span>%s</span><input id="customSessionTitle" autocomplete="off" maxlength="80"></label>
+    <div class="dialog-actions compact">
+      <button id="saveSessionTitle" type="button" class="secondary">%s</button>
+    </div>
+  </div>
   <div class="dialog-actions">
     <button id="dialogClose" type="button" class="secondary">%s</button>
     <button id="dialogDelete" type="button" class="danger">%s</button>
@@ -534,6 +540,8 @@ func terminalPageHTML(lang uiLang, machineName string) string {
 		html.EscapeString(lang.t("cancel")),
 		html.EscapeString(lang.t("send")),
 		html.EscapeString(lang.t("sessionPrefix")),
+		html.EscapeString(lang.t("customTitle")),
+		html.EscapeString(lang.t("saveTitle")),
 		html.EscapeString(lang.t("close")),
 		html.EscapeString(lang.t("delete")),
 		html.EscapeString(lang.t("clone")),
@@ -680,7 +688,7 @@ main{max-width:1180px;margin:0 auto;padding:28px}.hero{display:flex;justify-cont
 .panel-title-row{display:flex;align-items:center;justify-content:space-between;gap:12px}.instance-row{display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:10px;align-items:end;margin-top:10px}.choice-list{display:grid;gap:10px}.choice{display:flex;align-items:center;gap:10px;padding:10px;border:1px solid var(--line);border-radius:7px}.choice input{width:auto}.actionbar{grid-column:1/-1;display:flex;justify-content:flex-end;gap:10px;padding:14px 0 4px}
 button{border:0;border-radius:7px;background:var(--accent);color:#fff;font-weight:700;padding:10px 16px;cursor:pointer}button:hover{filter:brightness(.96)}button.secondary{background:#fff;color:#344054;border:1px solid #cfd6df}.remove{background:#fff4ed;color:#b54708;border:1px solid #fed7aa}.status-card{padding:16px;min-width:220px}.status-card.muted{color:var(--muted)}.status-dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:#12b76a;margin-right:8px}.status-card small{display:block;color:var(--muted);margin-top:4px}.kv{display:grid;grid-template-columns:145px minmax(0,1fr);gap:10px;margin:0}.kv dt{color:var(--muted)}.kv dd{margin:0}
 .pair-section{margin-top:16px}.pair-section h2{margin-bottom:16px}.terminal-page{display:grid;gap:16px}.terminal-connect{display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:22px;align-items:end}.connect-form{display:grid;gap:12px}.terminal-app{display:grid;grid-template-columns:280px minmax(0,1fr);gap:14px;height:calc(100vh - 122px);min-height:620px}.android-bridge-bar{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:8px;align-items:center}.android-bridge-bar[hidden]{display:none!important}.terminal-sidebar,.terminal-workbench{background:#fff;border:1px solid var(--line);border-radius:8px;box-shadow:var(--shadow);min-height:0}.terminal-sidebar{display:flex;flex-direction:column;padding:12px}.terminal-toolbar{display:grid;grid-template-columns:48px;gap:8px;margin-bottom:10px}.pane-list{display:grid;gap:8px;overflow:auto}.pane-item{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center;padding:9px;border:1px solid var(--line);border-radius:7px;background:#f8fafc;text-align:left;color:#18212f}.pane-item.active{background:#dbeafe;border-color:#93c5fd}.pane-item.selected{outline:2px solid #2563eb}.pane-main{display:block;min-width:0}.pane-title{display:block;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.pane-notify-dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:#ef4444;margin-right:6px;box-shadow:0 0 0 2px rgba(239,68,68,.18);vertical-align:1px}.pane-meta{display:block;color:var(--muted);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.pane-menu{padding:7px 9px}.terminal-workbench{display:grid;grid-template-rows:auto minmax(0,1fr) auto auto;padding:12px;gap:10px}.terminal-statusbar{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px}.status-pill{background:#e5e7eb;color:#374151;border:1px solid #d1d5db}.status-pill.ok{background:#d1fae5;color:#065f46;border-color:#86efac}.status-pill.work{background:#dbeafe;color:#1d4ed8;border-color:#93c5fd}.status-pill.err{background:#fee2e2;color:#991b1b;border-color:#fca5a5}.terminal-output{margin:0;overflow:auto;background:#000;color:#b2b2b2;border-radius:8px;padding:14px;font:13px/1.25 "JetBrains Mono","Cascadia Mono",Consolas,"Noto Color Emoji","Symbols Nerd Font Mono",monospace;white-space:pre-wrap;word-break:break-word;font-variant-ligatures:none}.attachment-panel{display:grid;gap:7px;padding:8px;border:1px solid #d1d5db;border-radius:7px;background:#f8fafc}.attachment-panel[hidden]{display:none!important}.attachment-head{display:flex;align-items:center;justify-content:space-between;gap:8px;color:#475467;font-size:12px;font-weight:700}.attachment-head button{height:28px;padding:0 9px;font-size:12px}.attachment-list{display:flex;gap:6px;overflow:auto}.attachment-chip{display:flex;align-items:center;gap:6px;max-width:220px;padding:5px 7px;border:1px solid #cfd6df;border-radius:7px;background:#fff;color:#18212f;font-size:12px}.attachment-chip span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.attachment-chip small{color:#667085}.attachment-chip button{height:22px;width:22px;padding:0;border-radius:5px;background:#fee2e2;color:#991b1b}.send-row{display:grid;grid-template-columns:minmax(0,1fr) 70px 54px 92px;gap:8px}.send-row input{height:44px}.key-panel{display:grid;grid-template-columns:repeat(9,minmax(0,1fr));gap:6px}.key-panel[hidden]{display:none!important}.key-panel button{padding:7px 6px;font-size:12px}.pane-dialog{border:1px solid var(--line);border-radius:8px;box-shadow:var(--shadow);max-width:560px;width:calc(100% - 28px);padding:18px}.pane-dialog h2{margin:0 0 14px}.mobile-input-dialog textarea{min-height:160px;max-height:45vh;line-height:1.35;resize:vertical}.mobile-input-dialog #mobileAddAttachment{width:100%;margin-top:10px}.mobile-attachment-panel{margin-top:10px}.spawn-panel{display:grid;gap:10px}.spawn-panel[hidden]{display:none!important}.dialog-actions.compact{justify-content:flex-start;margin-top:0}.resume-list{display:grid;gap:7px;max-height:220px;overflow:auto}.resume-item{display:grid;gap:2px;text-align:left;padding:8px;border:1px solid var(--line);border-radius:7px;background:#f8fafc;color:#18212f}.resume-item.selected{outline:2px solid #2563eb;background:#eff6ff}.resume-item strong{font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.resume-item span{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.dialog-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:16px}.danger{background:#fee2e2!important;color:#991b1b!important;border:1px solid #fca5a5!important}
-.pane-last{display:block;color:#0f8b8d;font-size:12px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.pane-state{display:inline-flex;align-items:center;height:17px;margin-left:6px;padding:0 6px;border-radius:999px;background:#333;color:#9a9a9a;font-size:10px;font-weight:800;vertical-align:1px}.pane-state.work{background:#1f3b2a;color:#8ff0ad}.icon-button{width:38px;padding:0;display:inline-grid;place-items:center;font-size:18px}.terminal-app:fullscreen{width:100vw;height:100dvh!important;min-height:0!important;background:#000}.page-terminal{background:#000;overflow:hidden}.page-terminal .topbar{display:none}.page-terminal main{max-width:none;height:100dvh;padding:10px 12px 6px;background:#000}.page-terminal .terminal-page{height:100%;display:block}.page-terminal .terminal-app{height:calc(100dvh - 16px);min-height:0;grid-template-columns:320px minmax(0,1fr);gap:10px}.page-terminal.android-webview .terminal-app{grid-template-rows:auto minmax(0,1fr);grid-template-columns:320px minmax(0,1fr)}.page-terminal.android-webview .android-bridge-bar{grid-column:1/-1}.page-terminal.android-webview .terminal-statusbar{display:none!important}.page-terminal .terminal-app[hidden],.page-terminal .terminal-connect[hidden]{display:none!important}.page-terminal .terminal-sidebar{background:#1f1f1f;border-color:#333;box-shadow:none}.page-terminal .terminal-toolbar{grid-template-columns:40px}.page-terminal .pane-list{gap:7px}.page-terminal .pane-item{background:#262626;border-color:#444;color:#cccccc;padding:10px;border-radius:7px}.page-terminal .pane-item.active{background:#333;border-color:#555}.page-terminal .pane-item.selected{outline:2px solid #52ad70}.page-terminal .pane-title{color:#eeeeee}.page-terminal .pane-meta{color:#9a9a9a}.page-terminal .pane-last{color:#7acaca}.page-terminal .terminal-workbench{position:relative;border:0;box-shadow:none;background:#000;padding:0;display:grid;grid-template-rows:minmax(0,1fr) auto auto}.page-terminal .terminal-output{border:1px solid #333;border-radius:7px;padding-top:44px;font-size:var(--terminal-font-size,14px);line-height:1.25}.page-terminal .terminal-statusbar{position:absolute;top:8px;right:8px;z-index:5;display:flex;gap:6px;grid-template-columns:none}.page-terminal .terminal-statusbar button{height:30px;padding:0 10px;font-size:12px}.page-terminal .terminal-statusbar .icon-button{width:32px;padding:0;font-size:16px}.page-terminal .send-row{padding-bottom:0}.page-terminal .terminal-connect{position:absolute;inset:0;z-index:10;min-height:0;display:grid;grid-template-columns:minmax(280px,420px);align-content:center;justify-content:center;border:0;box-shadow:none;background:#000;padding:18px}.page-terminal .terminal-connect>div,.page-terminal .terminal-connect>form{background:#f8fafc}.page-terminal .terminal-connect>div{padding:22px 22px 0;border-radius:8px 8px 0 0}.page-terminal .terminal-connect>form{padding:14px 22px 22px;border-radius:0 0 8px 8px}
+.pane-last{display:block;color:#0f8b8d;font-size:12px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.pane-state{display:inline-flex;align-items:center;height:17px;margin-left:6px;padding:0 6px;border-radius:999px;background:#333;color:#9a9a9a;font-size:10px;font-weight:800;vertical-align:1px}.pane-state.work{background:#1f3b2a;color:#8ff0ad}.pane-state.confirm{background:#2f2411;color:#ffd166}.pane-confirm-mark{display:inline-grid;place-items:center;width:16px;height:16px;border-radius:50%;background:#f59e0b;color:#1f1300;margin-right:6px;font-size:11px;font-weight:900;vertical-align:1px}.icon-button{width:38px;padding:0;display:inline-grid;place-items:center;font-size:18px}.terminal-app:fullscreen{width:100vw;height:100dvh!important;min-height:0!important;background:#000}.page-terminal{background:#000;overflow:hidden}.page-terminal .topbar{display:none}.page-terminal main{max-width:none;height:100dvh;padding:10px 12px 6px;background:#000}.page-terminal .terminal-page{height:100%;display:block}.page-terminal .terminal-app{height:calc(100dvh - 16px);min-height:0;grid-template-columns:320px minmax(0,1fr);gap:10px}.page-terminal.android-webview .terminal-app{grid-template-rows:auto minmax(0,1fr);grid-template-columns:320px minmax(0,1fr)}.page-terminal.android-webview .android-bridge-bar{grid-column:1/-1}.page-terminal.android-webview .terminal-statusbar{display:none!important}.page-terminal .terminal-app[hidden],.page-terminal .terminal-connect[hidden]{display:none!important}.page-terminal .terminal-sidebar{background:#1f1f1f;border-color:#333;box-shadow:none}.page-terminal .terminal-toolbar{grid-template-columns:40px}.page-terminal .pane-list{gap:7px}.page-terminal .pane-item{background:#262626;border-color:#444;color:#cccccc;padding:10px;border-radius:7px}.page-terminal .pane-item.active{background:#333;border-color:#555}.page-terminal .pane-item.selected{outline:2px solid #52ad70}.page-terminal .pane-title{color:#eeeeee}.page-terminal .pane-meta{color:#9a9a9a}.page-terminal .pane-last{color:#7acaca}.page-terminal .terminal-workbench{position:relative;border:0;box-shadow:none;background:#000;padding:0;display:grid;grid-template-rows:minmax(0,1fr) auto auto}.page-terminal .terminal-output{border:1px solid #333;border-radius:7px;padding-top:44px;font-size:var(--terminal-font-size,14px);line-height:1.25}.page-terminal .terminal-statusbar{position:absolute;top:8px;right:8px;z-index:5;display:flex;gap:6px;grid-template-columns:none}.page-terminal .terminal-statusbar button{height:30px;padding:0 10px;font-size:12px}.page-terminal .terminal-statusbar .icon-button{width:32px;padding:0;font-size:16px}.page-terminal .send-row{padding-bottom:0}.page-terminal .terminal-connect{position:absolute;inset:0;z-index:10;min-height:0;display:grid;grid-template-columns:minmax(280px,420px);align-content:center;justify-content:center;border:0;box-shadow:none;background:#000;padding:18px}.page-terminal .terminal-connect>div,.page-terminal .terminal-connect>form{background:#f8fafc}.page-terminal .terminal-connect>div{padding:22px 22px 0;border-radius:8px 8px 0 0}.page-terminal .terminal-connect>form{padding:14px 22px 22px;border-radius:0 0 8px 8px}
 @media(max-width:760px){.topbar{padding:0 14px}.brand span{display:none}nav{gap:2px}nav a{padding:7px 8px;font-size:12px}main{padding:12px}.hero{display:block}.hero-mark{display:none}.settings-layout,.panel-grid.two{grid-template-columns:1fr}.field-grid{grid-template-columns:1fr}.pair-card{grid-template-columns:1fr}.instance-row{grid-template-columns:1fr}.actionbar{position:sticky;bottom:0;background:var(--bg);padding:12px 0}.test-row{grid-template-columns:1fr}.terminal-connect{grid-template-columns:1fr}.terminal-app{grid-template-columns:1fr;height:calc(100vh - 88px);min-height:0}.terminal-sidebar{max-height:128px;padding:8px}.pane-list{display:flex;overflow:auto}.pane-item{min-width:180px}.terminal-workbench{min-height:0}.terminal-output{font-size:12px;padding:10px}.send-row{grid-template-columns:minmax(0,1fr) 52px 48px 74px}.key-panel{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media(max-width:760px){.page-terminal{background:#000;overflow:auto}.page-terminal .topbar{display:none}.page-terminal main{max-width:none;min-height:100dvh;padding:0;background:#000}.page-terminal .terminal-page{min-height:100dvh;display:block}.page-terminal .terminal-connect{min-height:100dvh;display:grid;grid-template-columns:1fr;align-content:center;border:0;border-radius:0;box-shadow:none;padding:18px;background:#f8fafc}.page-terminal .terminal-connect h1{font-size:24px}.page-terminal .terminal-connect .lead{font-size:13px}.page-terminal .terminal-app{min-height:100dvh;display:flex;flex-direction:column;gap:0;background:#000}.page-terminal.android-webview .terminal-app{display:flex;flex-direction:column}.page-terminal .android-bridge-bar{order:0;padding:8px;background:#111827}.page-terminal .android-bridge-bar button{height:42px;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.page-terminal .terminal-sidebar{border:0;border-radius:0;box-shadow:none;max-height:none;min-height:0;padding:6px;background:#1f1f1f;display:grid;grid-template-columns:auto minmax(0,1fr);gap:6px;align-items:center}.page-terminal .terminal-toolbar{display:flex;gap:5px;margin:0;min-width:max-content}.page-terminal .terminal-toolbar button{height:30px;padding:0 8px;font-size:11px;flex:0 0 auto}.page-terminal #newSession{width:32px;padding:0}.page-terminal .pane-list{display:flex;gap:5px;min-width:0;overflow-x:auto;overflow-y:hidden;padding:1px 2px 3px;scrollbar-width:thin;-webkit-overflow-scrolling:touch}.page-terminal .pane-item{min-width:118px;max-width:160px;padding:5px 7px;border-radius:7px;flex:0 0 auto}.page-terminal .pane-title{font-size:11px}.page-terminal .pane-meta{display:none}.page-terminal .pane-menu{padding:2px 4px}.page-terminal .terminal-workbench{flex:1;min-height:0;border:0;border-radius:0;box-shadow:none;display:flex;flex-direction:column;gap:6px;padding:6px 7px 4px;background:#000}.page-terminal .terminal-statusbar{display:grid;grid-template-columns:minmax(0,1fr) 40px 40px;gap:6px;order:0}.page-terminal .terminal-statusbar button{height:30px;padding:0 8px;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.page-terminal .terminal-output{min-height:62dvh;max-height:none;border-radius:0;padding:10px;font-size:12px;line-height:1.25;background:#000;overflow:auto;flex:1}.page-terminal .attachment-panel{order:1;background:#1f1f1f;border-color:#333;color:#cccccc}.page-terminal .attachment-chip{background:#262626;border-color:#444;color:#eeeeee}.page-terminal .key-panel{grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;background:#1f1f1f;padding:7px;border-radius:7px;order:2}.page-terminal .key-panel button{height:30px;padding:0 4px;font-size:11px}.page-terminal .send-row{position:sticky;bottom:0;z-index:4;grid-template-columns:minmax(0,1fr) 42px 42px 58px;gap:6px;order:3;background:#000;padding:4px 0 2px}.page-terminal .send-row input{height:42px;border-radius:7px;font-size:14px}.page-terminal .send-row button{height:42px;padding:0 8px;font-size:12px}.page-terminal .pane-dialog{width:calc(100% - 18px);padding:14px}.page-terminal .mobile-input-dialog{max-height:calc(100dvh - 18px)}.page-terminal .mobile-input-dialog textarea{min-height:30dvh;max-height:50dvh;font-size:16px;line-height:1.35}}`
 }
@@ -739,7 +747,7 @@ const state = {
   clientId: browserClientId(),
   instanceId: 'main',
   defaults: {instanceId:'main', cwd:'D:\\mgame', command:['cmd.exe','/k','cd /d D:\\mgame && codex --dangerously-bypass-approvals-and-sandbox']},
-  panes: [], paneId: '', workingCount: 0, paneWorking: {}, paneNotify: {}, statusText: '', statusKind: '', snapshotHash: '', pollTimer: 0, pollToken: 0, selectedPane: null, attachments: [], codexSessions: [], selectedCodexSessionId: ''
+  panes: [], paneId: '', workingCount: 0, confirmCount: 0, paneWorking: {}, paneConfirm: {}, paneNotify: {}, statusText: '', statusKind: '', snapshotHash: '', pollTimer: 0, pollToken: 0, selectedPane: null, attachments: [], codexSessions: [], selectedCodexSessionId: ''
 };
 const mobileInputMedia = window.matchMedia ? window.matchMedia('(max-width: 760px)') : null;
 
@@ -848,6 +856,7 @@ function updateStatusButton(button, text, kind){
 function displayStatusText(text, kind){
   const parts = [];
   if (kind === 'ok' && state.workingCount > 0) parts.push((i18n.working || 'Working') + ' ' + state.workingCount);
+  if (kind === 'ok' && state.confirmCount > 0) parts.push((i18n.confirm || 'Confirm') + ' ' + state.confirmCount);
   const notifyCount = paneNotifyCount();
   if (kind === 'ok' && notifyCount > 0) parts.push('Notify ' + notifyCount);
   if (parts.length) {
@@ -857,7 +866,7 @@ function displayStatusText(text, kind){
   return text;
 }
 function displayStatusKind(kind){
-  return kind === 'ok' && (state.workingCount > 0 || paneNotifyCount() > 0) ? 'work' : kind;
+  return kind === 'ok' && (state.workingCount > 0 || state.confirmCount > 0 || paneNotifyCount() > 0) ? 'work' : kind;
 }
 function hasAndroidBridge(){
   return !!(window.EasyCodexAndroid);
@@ -940,14 +949,18 @@ function applySessionsData(data){
     if (!paneId) return;
     seen[paneId] = true;
     const isWorking = !!pane.isWorking;
-    if (state.paneWorking[paneId] === true && !isWorking) state.paneNotify[paneId] = true;
-    if (isWorking) delete state.paneNotify[paneId];
+    const isConfirm = !!pane.isConfirm;
+    if (state.paneWorking[paneId] === true && !isWorking && !isConfirm) state.paneNotify[paneId] = true;
+    if (isWorking || isConfirm) delete state.paneNotify[paneId];
     state.paneWorking[paneId] = isWorking;
+    state.paneConfirm[paneId] = isConfirm;
   });
   Object.keys(state.paneWorking).forEach(paneId => { if (!seen[paneId]) delete state.paneWorking[paneId]; });
+  Object.keys(state.paneConfirm).forEach(paneId => { if (!seen[paneId]) delete state.paneConfirm[paneId]; });
   Object.keys(state.paneNotify).forEach(paneId => { if (!seen[paneId]) delete state.paneNotify[paneId]; });
   state.panes = nextPanes;
   state.workingCount = Number(data.workingCount === undefined ? state.panes.filter(pane => pane.isWorking).length : data.workingCount);
+  state.confirmCount = Number(data.confirmCount === undefined ? state.panes.filter(pane => pane.isConfirm).length : data.confirmCount);
   updateDocumentTitle();
 }
 function paneHasNotify(paneId){
@@ -981,10 +994,16 @@ function renderPanes(){
       dot.className = 'pane-notify-dot';
       title.appendChild(dot);
     }
+    if (pane.isConfirm) {
+      const mark = document.createElement('span');
+      mark.className = 'pane-confirm-mark';
+      mark.textContent = '?';
+      title.appendChild(mark);
+    }
     title.appendChild(document.createTextNode((pane.isActive ? '* ' : '') + pane.paneId + ' ' + safeTitle(pane)));
     const stateBadge = document.createElement('span');
-    stateBadge.className = 'pane-state' + (pane.isWorking ? ' work' : '');
-    stateBadge.textContent = pane.isWorking ? (i18n.working || 'Working') : (i18n.idle || 'Idle');
+    stateBadge.className = 'pane-state' + (pane.isWorking ? ' work' : (pane.isConfirm ? ' confirm' : ''));
+    stateBadge.textContent = pane.isWorking ? (i18n.working || 'Working') : (pane.isConfirm ? '?' : (i18n.idle || 'Idle'));
     title.appendChild(stateBadge);
     const last = document.createElement('span');
     last.className = 'pane-last';
@@ -1014,7 +1033,10 @@ function renderPanes(){
   updateDocumentTitle();
 }
 function updateDocumentTitle(){
-  document.title = state.workingCount > 0 ? '(' + state.workingCount + ' working) ' + baseDocumentTitle : baseDocumentTitle;
+  const parts = [];
+  if (state.workingCount > 0) parts.push(state.workingCount + ' working');
+  if (state.confirmCount > 0) parts.push(state.confirmCount + ' confirm');
+  document.title = parts.length ? '(' + parts.join(', ') + ') ' + baseDocumentTitle : baseDocumentTitle;
   renderStatusButtons();
   notifyAndroidWorkingCount();
 }
@@ -1332,7 +1354,7 @@ function renderCodexSessions(){
     const button = document.createElement('button');
     button.type = 'button';
     button.className = 'resume-item' + (session.id === state.selectedCodexSessionId ? ' selected' : '');
-    button.innerHTML = '<strong>' + escapeHtml(session.summary || session.id) + '</strong><span>' + escapeHtml([session.timestamp || '', session.cwd || ''].filter(Boolean).join('  ')) + '</span>';
+    button.innerHTML = '<strong>' + escapeHtml(session.displayTitle || session.customTitle || session.summary || session.id) + '</strong><span>' + escapeHtml([session.timestamp || '', session.cwd || ''].filter(Boolean).join('  ')) + '</span>';
     button.onclick = () => {
       state.selectedCodexSessionId = session.id;
       if (session.cwd) $('spawnCwd').value = spawnCwdFromValue(session.cwd);
@@ -1373,12 +1395,27 @@ function showPaneDetails(pane){
   const details = $('dialogDetails');
   details.innerHTML = '';
   addDetail(details, i18n.dialogTitle, safeTitle(pane));
+  addDetail(details, i18n.codexSession || 'Codex session', pane.codexSessionId || '-');
   addDetail(details, i18n.dialogPane, pane.paneId);
   addDetail(details, i18n.dialogWindowTab, (pane.windowId || 0) + ' / ' + (pane.tabId || 0));
   addDetail(details, i18n.dialogWorkspace, pane.workspace || '-');
   addDetail(details, i18n.dialogWorkingDir, displayCwd(pane.cwd));
   addDetail(details, i18n.dialogActive, pane.isActive ? i18n.yes : i18n.no);
+  $('customSessionTitle').value = pane.customTitle || '';
+  $('customSessionTitle').disabled = !pane.codexSessionId;
+  $('saveSessionTitle').disabled = !pane.codexSessionId;
   $('paneDialog').showModal();
+}
+async function saveCustomSessionTitle(){
+  const pane = state.selectedPane;
+  if (!pane || !pane.codexSessionId) {
+    setStatus(i18n.sessionTitleUnavailable || 'Current pane has no Codex session to title.', 'err');
+    return;
+  }
+  const title = $('customSessionTitle').value || '';
+  await api('/api/codex/sessions/' + encodeURIComponent(pane.codexSessionId) + '/title', {method:'PUT', body:{title}}, true);
+  setStatus(i18n.sessionTitleSaved || 'Session title saved', 'ok');
+  await loadSessions();
 }
 function addDetail(box, name, value){
   const dt = document.createElement('dt');
@@ -1388,7 +1425,7 @@ function addDetail(box, name, value){
   box.appendChild(dt);
   box.appendChild(dd);
 }
-function safeTitle(pane){ return pane.title || pane.cwd || ''; }
+function safeTitle(pane){ return pane.displayTitle || pane.customTitle || pane.title || pane.cwd || ''; }
 function activePane(){
   return state.panes.find(item => item.paneId === state.paneId) || null;
 }
@@ -1624,6 +1661,7 @@ document.addEventListener('fullscreenchange', () => {
 $('dialogClose').onclick = () => $('paneDialog').close();
 $('dialogDelete').onclick = () => { const pane = state.selectedPane; $('paneDialog').close(); if (pane) deletePane(pane).catch(err => setStatus(err.message, 'err')); };
 $('dialogClone').onclick = () => { const pane = state.selectedPane; $('paneDialog').close(); if (pane) spawnSession(displayCwd(pane.cwd) === '-' ? state.defaults.cwd : displayCwd(pane.cwd)).catch(err => setStatus(err.message, 'err')); };
+$('saveSessionTitle').onclick = () => saveCustomSessionTitle().catch(err => setStatus(err.message, 'err'));
 $('connectionCancel').onclick = () => closeConnectionDialog();
 $('connectionSave').onclick = () => saveConnectionDialog().catch(err => setStatus(err.message, 'err'));
 $('terminalCheckUpdate').onclick = () => checkTerminalServerUpdate().catch(err => setStatus(err.message, 'err'));

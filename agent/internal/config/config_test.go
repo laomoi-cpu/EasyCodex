@@ -109,6 +109,7 @@ func TestSaveWritesConfigFile(t *testing.T) {
 	cfg.DisplayName = "Office PC"
 	cfg.PublicBaseURL = "http://100.64.1.2:8765/"
 	cfg.Listen = "0.0.0.0:8765"
+	cfg.CodexSessionTitles = map[string]string{" 019e-session ": " Build fix "}
 	cfg.MobileDefaults.CWD = `D:\mgame`
 	cfg.MobileDefaults.Command = []string{"cmd.exe", "/k", `cd /d D:\mgame && codex`}
 
@@ -134,12 +135,18 @@ func TestSaveWritesConfigFile(t *testing.T) {
 	if !strings.Contains(string(data), `"displayName": "Office PC"`) {
 		t.Fatalf("expected display name in saved config: %s", data)
 	}
+	if !strings.Contains(string(data), `"019e-session": "Build fix"`) {
+		t.Fatalf("expected codex session title in saved config: %s", data)
+	}
 	loaded, found, err := Load(path)
 	if err != nil {
 		t.Fatalf("Load returned error: %v", err)
 	}
 	if !found || loaded.Token != "saved-token" || !loaded.RegenerateTokenOnStart || !loaded.LANListenPromptShown || loaded.DisplayName != "Office PC" || loaded.PublicBaseURL != "http://100.64.1.2:8765" || loaded.Listen != "0.0.0.0:8765" {
 		t.Fatalf("unexpected loaded config: found=%v cfg=%#v", found, loaded)
+	}
+	if loaded.CodexSessionTitles["019e-session"] != "Build fix" {
+		t.Fatalf("unexpected codex session titles: %#v", loaded.CodexSessionTitles)
 	}
 }
 

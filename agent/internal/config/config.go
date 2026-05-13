@@ -19,19 +19,20 @@ const (
 )
 
 type Config struct {
-	Listen                 string         `json:"listen"`
-	Root                   string         `json:"root"`
-	Token                  string         `json:"token"`
-	RegenerateTokenOnStart bool           `json:"regenerateTokenOnStart"`
-	LANListenPromptShown   bool           `json:"lanListenPromptShown"`
-	DisplayName            string         `json:"displayName"`
-	PublicBaseURL          string         `json:"publicBaseUrl"`
-	UILanguage             string         `json:"uiLanguage"`
-	CommandTimeoutSeconds  int            `json:"commandTimeoutSeconds"`
-	AutoLaunch             []string       `json:"autoLaunch"`
-	CloseLaunchedGUIOnExit bool           `json:"closeLaunchedGuiOnExit"`
-	Instances              []Instance     `json:"instances"`
-	MobileDefaults         MobileDefaults `json:"mobileDefaults"`
+	Listen                 string            `json:"listen"`
+	Root                   string            `json:"root"`
+	Token                  string            `json:"token"`
+	RegenerateTokenOnStart bool              `json:"regenerateTokenOnStart"`
+	LANListenPromptShown   bool              `json:"lanListenPromptShown"`
+	DisplayName            string            `json:"displayName"`
+	PublicBaseURL          string            `json:"publicBaseUrl"`
+	UILanguage             string            `json:"uiLanguage"`
+	CommandTimeoutSeconds  int               `json:"commandTimeoutSeconds"`
+	AutoLaunch             []string          `json:"autoLaunch"`
+	CloseLaunchedGUIOnExit bool              `json:"closeLaunchedGuiOnExit"`
+	CodexSessionTitles     map[string]string `json:"codexSessionTitles"`
+	Instances              []Instance        `json:"instances"`
+	MobileDefaults         MobileDefaults    `json:"mobileDefaults"`
 }
 
 type Instance struct {
@@ -151,6 +152,7 @@ func Normalize(cfg *Config) {
 	if cfg.UILanguage == "" {
 		cfg.UILanguage = "en"
 	}
+	cfg.CodexSessionTitles = normalizeCodexSessionTitles(cfg.CodexSessionTitles)
 	for i := range cfg.AutoLaunch {
 		cfg.AutoLaunch[i] = strings.TrimSpace(cfg.AutoLaunch[i])
 	}
@@ -238,6 +240,19 @@ func Validate(cfg Config) error {
 
 func defaultMobileCommand() []string {
 	return []string{"cmd.exe", "/k", `cd /d D:\mgame && codex --dangerously-bypass-approvals-and-sandbox`}
+}
+
+func normalizeCodexSessionTitles(titles map[string]string) map[string]string {
+	normalized := map[string]string{}
+	for id, title := range titles {
+		id = strings.TrimSpace(id)
+		title = strings.TrimSpace(title)
+		if id == "" || title == "" {
+			continue
+		}
+		normalized[id] = title
+	}
+	return normalized
 }
 func (cfg Config) CommandTimeout() time.Duration {
 	if cfg.CommandTimeoutSeconds <= 0 {
