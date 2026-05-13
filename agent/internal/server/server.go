@@ -805,13 +805,18 @@ func (s *Server) spawn(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var body struct {
-		PaneID    string   `json:"paneId"`
-		CWD       string   `json:"cwd"`
-		NewWindow bool     `json:"newWindow"`
-		Command   []string `json:"command"`
+		PaneID         string   `json:"paneId"`
+		CWD            string   `json:"cwd"`
+		NewWindow      bool     `json:"newWindow"`
+		Command        []string `json:"command"`
+		CodexSessionID string   `json:"codexSessionId"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	if body.CodexSessionID != "" && !validCodexSessionID(body.CodexSessionID) {
+		writeError(w, http.StatusBadRequest, errors.New("invalid codex session id"))
 		return
 	}
 	targetPaneID := body.PaneID
@@ -827,6 +832,9 @@ func (s *Server) spawn(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		writeError(w, http.StatusBadGateway, err)
 		return
+	}
+	if body.CodexSessionID != "" {
+		s.recordPaneCodexSession(instance.ID, paneID, body.CodexSessionID)
 	}
 	writeOK(w, http.StatusOK, map[string]any{
 		"paneId": paneID,
@@ -872,6 +880,15 @@ func (s *Server) recordPaneInput(instanceID, paneID, text string) {
 	s.paneInputs[paneInputKey(instanceID, paneID)] = input
 }
 
+func (s *Server) recordPaneCodexSession(instanceID, paneID, sessionID string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	input := s.paneInputs[paneInputKey(instanceID, paneID)]
+	input.CodexSessionID = sessionID
+	input.UpdatedAt = time.Now()
+	s.paneInputs[paneInputKey(instanceID, paneID)] = input
+}
+
 func (s *Server) attachPaneInputs(instanceID string, tree *sessionTree) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -906,25 +923,9 @@ func (s *Server) attachCodexSessionTitles(instanceID string, tree *sessionTree) 
 		cfg.CodexSessionTitles = map[string]string{}
 	}
 	inputs := s.paneInputsSnapshot(instanceID)
-	recent, err := s.recentCodexSessionsCached(100)
-	if err != nil {
-		recent = nil
-	}
-	recentByCWD := map[string]string{}
-	for _, item := range recent {
-		key := cwdKey(item.CWD)
-		if key != "" {
-			if _, exists := recentByCWD[key]; !exists {
-				recentByCWD[key] = item.ID
-			}
-		}
-	}
 	enrich := func(pane *paneSession) {
 		input := inputs[pane.PaneID]
 		sessionID := input.CodexSessionID
-		if sessionID == "" {
-			sessionID = recentByCWD[cwdKey(pane.CWD)]
-		}
 		if sessionID == "" {
 			return
 		}

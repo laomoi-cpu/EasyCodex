@@ -19,10 +19,12 @@ import (
 type fakeWezTerm struct {
 	lastClass   string
 	lastPaneID  string
+	lastCWD     string
 	lastLines   int
 	lastEscapes bool
 	lastText    string
 	lastNoPaste bool
+	lastCommand []string
 	sendCalls   []sendCall
 	launched    bool
 	killed      bool
@@ -119,6 +121,8 @@ func (fake *fakeWezTerm) KillPane(ctx context.Context, class, paneID string) err
 func (fake *fakeWezTerm) Spawn(ctx context.Context, class, paneID, cwd string, newWindow bool, command []string) (string, error) {
 	fake.lastClass = class
 	fake.lastPaneID = paneID
+	fake.lastCWD = cwd
+	fake.lastCommand = append([]string(nil), command...)
 	return "9", nil
 }
 
@@ -838,6 +842,7 @@ func TestTerminalPageIsAvailableRemotely(t *testing.T) {
 		!strings.Contains(body, "['cmd.exe','/k','codex','resume']") ||
 		!strings.Contains(body, "function selectedCodexSession()") ||
 		!strings.Contains(body, "const selectedSession = selectedCodexSession()") ||
+		!strings.Contains(body, "if (options.codexSessionId) body.codexSessionId = options.codexSessionId") ||
 		!strings.Contains(body, "if (!selectedCodexSession()) state.selectedCodexSessionId = ''") ||
 		!strings.Contains(body, "if (session.cwd) $('spawnCwd').value = spawnCwdFromValue(session.cwd)") ||
 		!strings.Contains(body, "snapshot?lines=180&escapes=1") ||
@@ -1093,7 +1098,7 @@ func TestSessionsAppliesCodexTitleFromResumeCommand(t *testing.T) {
 	}
 }
 
-func TestSessionsInfersCodexTitleFromRecentCWD(t *testing.T) {
+func TestSessionsDoesNotInferCodexTitleFromRecentCWD(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)
@@ -1130,7 +1135,7 @@ func TestSessionsInfersCodexTitleFromRecentCWD(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
 		t.Fatalf("invalid json: %v", err)
 	}
-	if !payload.OK || payload.Data.Panes[0].CodexSessionID != sessionID || payload.Data.Panes[0].CustomTitle != "Mobile polish" {
+	if !payload.OK || payload.Data.Panes[0].CodexSessionID != "" || payload.Data.Panes[0].CustomTitle != "" || payload.Data.Panes[0].DisplayTitle != "" {
 		t.Fatalf("unexpected panes: %#v", payload.Data.Panes)
 	}
 }
@@ -1662,5 +1667,26 @@ func TestSpawnUsesExplicitPaneID(t *testing.T) {
 	}
 	if fake.lastPaneID != "4" {
 		t.Fatalf("expected explicit pane id 4, got %q", fake.lastPaneID)
+	}
+}
+
+func TestSpawnRecordsExplicitCodexSessionID(t *testing.T) {
+	srv, fake := testServer(t)
+	sessionID := "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+	req := httptest.NewRequest(http.MethodPost, "/api/instances/main/spawn", bytes.NewBufferString(`{"cwd":"D:\\mgame","command":["cmd.exe","/k","codex","resume","`+sessionID+`"],"codexSessionId":"`+sessionID+`"}`))
+	req.Header.Set("Authorization", "Bearer secret")
+	rec := httptest.NewRecorder()
+
+	srv.Handler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d body = %s", rec.Code, rec.Body.String())
+	}
+	if strings.Join(fake.lastCommand, " ") != "cmd.exe /k codex resume "+sessionID {
+		t.Fatalf("unexpected command: %#v", fake.lastCommand)
+	}
+	inputs := srv.paneInputsSnapshot("main")
+	if inputs["9"].CodexSessionID != sessionID {
+		t.Fatalf("codex session id was not recorded: %#v", inputs)
 	}
 }

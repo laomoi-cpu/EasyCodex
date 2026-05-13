@@ -1434,14 +1434,16 @@ function renderCodexSessions(){
 async function startSpawnFromDialog(){
   const cwd = $('spawnCwd').value || state.defaults.cwd;
   const command = spawnCommandFromDialog();
+  const selectedSession = $('spawnCommand').value === 'codex' ? selectedCodexSession() : null;
   closeSpawnDialog();
-  await spawnSession({cwd, command});
+  await spawnSession({cwd, command, codexSessionId: selectedSession ? selectedSession.id : ''});
 }
 async function spawnSession(options){
   if (typeof options === 'string') options = {cwd: options};
   options = options || {};
   setStatus(i18n.startingCodex, 'work');
   const body = {cwd: options.cwd || state.defaults.cwd, command: Array.isArray(options.command) ? options.command : (state.defaults.command || [])};
+  if (options.codexSessionId) body.codexSessionId = options.codexSessionId;
   const data = await api('/api/instances/' + encodeURIComponent(state.instanceId) + '/spawn', {method:'POST', body}, true);
   await loadSessions();
   if (data.paneId) selectPane(data.paneId);
