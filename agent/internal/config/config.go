@@ -16,6 +16,7 @@ import (
 const (
 	DefaultListen         = "127.0.0.1:8765"
 	DefaultCommandTimeout = 5 * time.Second
+	DefaultRetentionLines = 1000
 )
 
 type Config struct {
@@ -28,6 +29,8 @@ type Config struct {
 	PublicBaseURL          string            `json:"publicBaseUrl"`
 	UILanguage             string            `json:"uiLanguage"`
 	CommandTimeoutSeconds  int               `json:"commandTimeoutSeconds"`
+	AutoScrollTerminal     bool              `json:"autoScrollTerminal"`
+	TerminalRetentionLines int               `json:"terminalRetentionLines"`
 	AutoLaunch             []string          `json:"autoLaunch"`
 	CloseLaunchedGUIOnExit bool              `json:"closeLaunchedGuiOnExit"`
 	CodexSessionTitles     map[string]string `json:"codexSessionTitles"`
@@ -122,10 +125,12 @@ func Defaults() Config {
 	}
 
 	cfg := Config{
-		Listen:                DefaultListen,
-		Root:                  root,
-		CommandTimeoutSeconds: int(DefaultCommandTimeout / time.Second),
-		AutoLaunch:            []string{"main"},
+		Listen:                 DefaultListen,
+		Root:                   root,
+		CommandTimeoutSeconds:  int(DefaultCommandTimeout / time.Second),
+		AutoScrollTerminal:     true,
+		TerminalRetentionLines: DefaultRetentionLines,
+		AutoLaunch:             []string{"main"},
 		Instances: []Instance{
 			{ID: "main", Name: "main", Class: "easycodex"},
 		},
@@ -190,6 +195,9 @@ func Normalize(cfg *Config) {
 	if cfg.CommandTimeoutSeconds <= 0 {
 		cfg.CommandTimeoutSeconds = int(DefaultCommandTimeout / time.Second)
 	}
+	if cfg.TerminalRetentionLines == 0 {
+		cfg.TerminalRetentionLines = DefaultRetentionLines
+	}
 }
 
 func Validate(cfg Config) error {
@@ -201,6 +209,9 @@ func Validate(cfg Config) error {
 	}
 	if cfg.UILanguage != "en" && cfg.UILanguage != "zh" {
 		return errors.New("ui language must be en or zh")
+	}
+	if cfg.TerminalRetentionLines < 100 || cfg.TerminalRetentionLines > 10000 {
+		return errors.New("terminal retention lines must be between 100 and 10000")
 	}
 	if len(cfg.Instances) == 0 {
 		return errors.New("at least one instance is required")

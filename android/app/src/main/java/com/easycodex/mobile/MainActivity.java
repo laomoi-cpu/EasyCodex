@@ -34,6 +34,7 @@ import android.webkit.WebViewClient;
 import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
 import android.widget.Button;
+import android.widget.CheckBox;
 import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.Spinner;
@@ -83,6 +84,7 @@ public class MainActivity extends Activity {
     private String statusText = "Offline";
     private String statusKind = "warn";
     private int workingCount = 0;
+    private boolean autoScrollTerminal = true;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -456,7 +458,7 @@ public class MainActivity extends Activity {
     }
 
     private String terminalUrl() {
-        return baseUrl + "/terminal#baseUrl=" + Uri.encode(baseUrl) + "&token=" + Uri.encode(token);
+        return baseUrl + "/terminal#baseUrl=" + Uri.encode(baseUrl) + "&token=" + Uri.encode(token) + "&autoScrollTerminal=" + (autoScrollTerminal ? "1" : "0");
     }
 
     private boolean isTrustedWebPage() {
@@ -513,6 +515,11 @@ public class MainActivity extends Activity {
 
         EditText urlField = input("Agent URL", baseUrl);
         EditText tokenField = input("Token", token);
+        CheckBox autoScrollField = new CheckBox(this);
+        autoScrollField.setText("自动滚动会话到最新输出");
+        autoScrollField.setTextSize(13);
+        autoScrollField.setTextColor(0xFF344054);
+        autoScrollField.setChecked(autoScrollTerminal);
         panel.addView(fieldLabel("最近连接"), matchWrap());
         panel.addView(historySpinner, fixedHeight(dp(44)));
         panel.addView(fieldSpacer(), fixedHeight(dp(10)));
@@ -521,6 +528,7 @@ public class MainActivity extends Activity {
         panel.addView(fieldSpacer(), fixedHeight(dp(10)));
         panel.addView(fieldLabel("Token"), matchWrap());
         panel.addView(tokenField, fixedHeight(dp(44)));
+        panel.addView(autoScrollField, fixedHeight(dp(42)));
 
         LinearLayout actions = new LinearLayout(this);
         actions.setOrientation(LinearLayout.HORIZONTAL);
@@ -559,30 +567,31 @@ public class MainActivity extends Activity {
             startQrScan();
         });
         saveButton.setOnClickListener(v -> {
-            applyConnection(urlField, tokenField);
+            applyConnection(urlField, tokenField, autoScrollField);
             dialog.dismiss();
         });
         connectButton.setOnClickListener(v -> {
-            applyConnection(urlField, tokenField);
+            applyConnection(urlField, tokenField, autoScrollField);
             dialog.dismiss();
             loadTerminal();
             testConnection(false);
         });
         updateButton.setOnClickListener(v -> {
-            applyConnection(urlField, tokenField);
+            applyConnection(urlField, tokenField, autoScrollField);
             dialog.dismiss();
             checkServerUpdate();
         });
         dialog.show();
     }
 
-    private void applyConnection(EditText urlField, EditText tokenField) {
+    private void applyConnection(EditText urlField, EditText tokenField, CheckBox autoScrollField) {
         String nextBaseUrl = trimTrailingSlash(urlField.getText().toString().trim());
         if (!nextBaseUrl.equals(baseUrl)) {
             serverName = "";
         }
         baseUrl = nextBaseUrl;
         token = tokenField.getText().toString().trim();
+        autoScrollTerminal = autoScrollField == null || autoScrollField.isChecked();
         saveSettings();
         rememberConnection(baseUrl, token, "saved");
         hideKeyboard(urlField);
@@ -952,6 +961,7 @@ public class MainActivity extends Activity {
         SharedPreferences prefs = getSharedPreferences("easycodex", MODE_PRIVATE);
         baseUrl = prefs.getString("baseUrl", baseUrl);
         token = prefs.getString("token", token);
+        autoScrollTerminal = prefs.getBoolean("autoScrollTerminal", true);
         clientId = prefs.getString("clientId", "");
         if (clientId.isEmpty()) {
             clientId = "android:" + UUID.randomUUID().toString();
@@ -965,6 +975,7 @@ public class MainActivity extends Activity {
                 .edit()
                 .putString("baseUrl", baseUrl)
                 .putString("token", token)
+                .putBoolean("autoScrollTerminal", autoScrollTerminal)
                 .apply();
     }
 

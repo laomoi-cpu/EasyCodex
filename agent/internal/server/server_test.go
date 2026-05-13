@@ -296,6 +296,8 @@ func TestSettingsSaveWritesConfigAndUpdatesAuth(t *testing.T) {
 		"displayName":"Office PC",
 		"publicBaseUrl":"http://100.64.1.2:8765",
 		"commandTimeoutSeconds":5,
+		"autoScrollTerminal":false,
+		"terminalRetentionLines":1200,
 		"autoLaunch":["main"],
 		"closeLaunchedGuiOnExit":false,
 		"instances":[{"id":"main","name":"main","class":"easycodex"}],
@@ -314,7 +316,7 @@ func TestSettingsSaveWritesConfigAndUpdatesAuth(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load returned error: %v", err)
 	}
-	if !found || loaded.Token != "new-secret" || !loaded.RegenerateTokenOnStart || loaded.DisplayName != "Office PC" || loaded.PublicBaseURL != "http://100.64.1.2:8765" {
+	if !found || loaded.Token != "new-secret" || !loaded.RegenerateTokenOnStart || loaded.AutoScrollTerminal || loaded.TerminalRetentionLines != 1200 || loaded.DisplayName != "Office PC" || loaded.PublicBaseURL != "http://100.64.1.2:8765" {
 		t.Fatalf("unexpected saved config: found=%v cfg=%#v", found, loaded)
 	}
 
@@ -441,6 +443,16 @@ func TestSettingsIncludesVersion(t *testing.T) {
 		!strings.Contains(body, "/api/restart") {
 		t.Fatalf("expected LAN listen prompt in settings page: %s", body)
 	}
+	if !strings.Contains(body, `id="autoScrollTerminal"`) ||
+		!strings.Contains(body, "autoScrollTerminal:$('autoScrollTerminal').checked") ||
+		!strings.Contains(body, "$('autoScrollTerminal').checked=c.autoScrollTerminal!==false") {
+		t.Fatalf("expected terminal auto scroll setting in settings page: %s", body)
+	}
+	if !strings.Contains(body, `id="terminalRetentionLines"`) ||
+		!strings.Contains(body, "terminalRetentionLines:parseInt($('terminalRetentionLines').value,10)||1000") ||
+		!strings.Contains(body, "$('terminalRetentionLines').value=c.terminalRetentionLines||1000") {
+		t.Fatalf("expected terminal retention setting in settings page: %s", body)
+	}
 }
 
 func TestMachinePageTitleIncludesHostPrefix(t *testing.T) {
@@ -460,6 +472,8 @@ func TestAppConfigIncludesMachineName(t *testing.T) {
 	cfg.Listen = "127.0.0.1:0"
 	cfg.Token = "secret"
 	cfg.DisplayName = "Office PC"
+	cfg.AutoScrollTerminal = false
+	cfg.TerminalRetentionLines = 1200
 	srv, err := New(cfg, &fakeWezTerm{}, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -476,13 +490,15 @@ func TestAppConfigIncludesMachineName(t *testing.T) {
 	var payload struct {
 		OK   bool `json:"ok"`
 		Data struct {
-			MachineName string `json:"machineName"`
+			MachineName            string `json:"machineName"`
+			AutoScrollTerminal     bool   `json:"autoScrollTerminal"`
+			TerminalRetentionLines int    `json:"terminalRetentionLines"`
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
 		t.Fatal(err)
 	}
-	if !payload.OK || payload.Data.MachineName != "Office PC" {
+	if !payload.OK || payload.Data.MachineName != "Office PC" || payload.Data.AutoScrollTerminal || payload.Data.TerminalRetentionLines != 1200 {
 		t.Fatalf("unexpected config payload: %#v", payload)
 	}
 }
@@ -764,6 +780,11 @@ func TestTerminalPageIsAvailableRemotely(t *testing.T) {
 		!strings.Contains(body, "function insertCommandInputText(text)") ||
 		!strings.Contains(body, "function fileURIToLocalPath(uri)") ||
 		!strings.Contains(body, "insertCommandInputText(paths.map(pathForCommandInput).join(' '))") ||
+		!strings.Contains(body, "commandDrafts: {}") ||
+		!strings.Contains(body, "outputBuffers: {}") ||
+		!strings.Contains(body, "function saveCommandDraft()") ||
+		!strings.Contains(body, "function restoreCommandDraft(paneId)") ||
+		!strings.Contains(body, "$('commandInput').addEventListener('input', saveCommandDraft)") ||
 		!strings.Contains(body, "$('commandInput').addEventListener('pointerdown', handleCommandInputIntent)") ||
 		!strings.Contains(body, "$('mobileInputSend').onclick = () => sendMobileInput().catch") ||
 		!strings.Contains(body, "$('mobileAddAttachment').onclick = () => $('attachmentInput').click()") ||
@@ -787,6 +808,7 @@ func TestTerminalPageIsAvailableRemotely(t *testing.T) {
 		!strings.Contains(body, "document.addEventListener('fullscreenchange'") ||
 		!strings.Contains(body, "addEventListener('drop', handleDrop)") ||
 		!strings.Contains(body, `id="connectionDialog"`) ||
+		!strings.Contains(body, `id="dialogAutoScrollTerminal"`) ||
 		!strings.Contains(body, `id="terminalCheckUpdate"`) ||
 		!strings.Contains(body, "function openConnectionDialog()") ||
 		!strings.Contains(body, "function checkTerminalServerUpdate()") ||
@@ -795,6 +817,16 @@ func TestTerminalPageIsAvailableRemotely(t *testing.T) {
 		!strings.Contains(body, "$('terminalCheckUpdate').onclick = () => checkTerminalServerUpdate()") ||
 		!strings.Contains(body, "function fitTerminalFont()") ||
 		!strings.Contains(body, "function applySessionsData(data)") ||
+		!strings.Contains(body, "store.getItem('easycodex.autoScrollTerminal') !== 'false'") ||
+		!strings.Contains(body, "params.get('autoScrollTerminal')") ||
+		!strings.Contains(body, "if (store.getItem('easycodex.autoScrollTerminal') === null) state.autoScrollTerminal = cfg.autoScrollTerminal !== false") ||
+		!strings.Contains(body, "state.terminalRetentionLines = normalizeRetentionLines(cfg.terminalRetentionLines)") ||
+		!strings.Contains(body, "store.setItem('easycodex.autoScrollTerminal', state.autoScrollTerminal ? 'true' : 'false')") ||
+		!strings.Contains(body, "if (state.autoScrollTerminal) output.scrollTop = output.scrollHeight") ||
+		!strings.Contains(body, "function mergeTerminalBuffer(current, snapshot)") ||
+		!strings.Contains(body, "function trimTerminalLines(text, limit)") ||
+		!strings.Contains(body, "snapshot?lines=' + encodeURIComponent(snapshotLineCount())") ||
+		!strings.Contains(body, "state.outputBuffers[paneId] = trimTerminalLines(merged, state.terminalRetentionLines)") ||
 		!strings.Contains(body, "state.paneWorking[paneId] === true && !isWorking") ||
 		!strings.Contains(body, "state.confirmCount = Number(data.confirmCount") ||
 		!strings.Contains(body, "function clearPaneNotify(paneId, rerender)") ||
@@ -845,7 +877,7 @@ func TestTerminalPageIsAvailableRemotely(t *testing.T) {
 		!strings.Contains(body, "if (options.codexSessionId) body.codexSessionId = options.codexSessionId") ||
 		!strings.Contains(body, "if (!selectedCodexSession()) state.selectedCodexSessionId = ''") ||
 		!strings.Contains(body, "if (session.cwd) $('spawnCwd').value = spawnCwdFromValue(session.cwd)") ||
-		!strings.Contains(body, "snapshot?lines=180&escapes=1") ||
+		!strings.Contains(body, "snapshot?lines=") ||
 		strings.Contains(body, `id="refreshSessions"`) ||
 		strings.Contains(body, "$('refreshSessions')") {
 		t.Fatalf("unexpected terminal page: %s", body)

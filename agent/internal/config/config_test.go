@@ -24,6 +24,12 @@ func TestLoadMissingUsesDefaultsAndRuntimeToken(t *testing.T) {
 	if len(cfg.AutoLaunch) != 1 || cfg.AutoLaunch[0] != "main" {
 		t.Fatalf("unexpected auto launch: %#v", cfg.AutoLaunch)
 	}
+	if !cfg.AutoScrollTerminal {
+		t.Fatalf("expected terminal auto scroll enabled by default")
+	}
+	if cfg.TerminalRetentionLines != DefaultRetentionLines {
+		t.Fatalf("terminal retention lines = %d", cfg.TerminalRetentionLines)
+	}
 	if len(cfg.Instances) != 1 || cfg.Instances[0].Class != "easycodex" {
 		t.Fatalf("unexpected instances: %#v", cfg.Instances)
 	}
@@ -109,6 +115,8 @@ func TestSaveWritesConfigFile(t *testing.T) {
 	cfg.DisplayName = "Office PC"
 	cfg.PublicBaseURL = "http://100.64.1.2:8765/"
 	cfg.Listen = "0.0.0.0:8765"
+	cfg.AutoScrollTerminal = false
+	cfg.TerminalRetentionLines = 1200
 	cfg.CodexSessionTitles = map[string]string{" 019e-session ": " Build fix "}
 	cfg.MobileDefaults.CWD = `D:\mgame`
 	cfg.MobileDefaults.Command = []string{"cmd.exe", "/k", `cd /d D:\mgame && codex`}
@@ -135,6 +143,12 @@ func TestSaveWritesConfigFile(t *testing.T) {
 	if !strings.Contains(string(data), `"displayName": "Office PC"`) {
 		t.Fatalf("expected display name in saved config: %s", data)
 	}
+	if !strings.Contains(string(data), `"autoScrollTerminal": false`) {
+		t.Fatalf("expected terminal auto scroll option in saved config: %s", data)
+	}
+	if !strings.Contains(string(data), `"terminalRetentionLines": 1200`) {
+		t.Fatalf("expected terminal retention option in saved config: %s", data)
+	}
 	if !strings.Contains(string(data), `"019e-session": "Build fix"`) {
 		t.Fatalf("expected codex session title in saved config: %s", data)
 	}
@@ -142,7 +156,7 @@ func TestSaveWritesConfigFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load returned error: %v", err)
 	}
-	if !found || loaded.Token != "saved-token" || !loaded.RegenerateTokenOnStart || !loaded.LANListenPromptShown || loaded.DisplayName != "Office PC" || loaded.PublicBaseURL != "http://100.64.1.2:8765" || loaded.Listen != "0.0.0.0:8765" {
+	if !found || loaded.Token != "saved-token" || !loaded.RegenerateTokenOnStart || !loaded.LANListenPromptShown || loaded.AutoScrollTerminal || loaded.TerminalRetentionLines != 1200 || loaded.DisplayName != "Office PC" || loaded.PublicBaseURL != "http://100.64.1.2:8765" || loaded.Listen != "0.0.0.0:8765" {
 		t.Fatalf("unexpected loaded config: found=%v cfg=%#v", found, loaded)
 	}
 	if loaded.CodexSessionTitles["019e-session"] != "Build fix" {
@@ -174,5 +188,17 @@ func TestValidateRejectsUnknownAutoLaunch(t *testing.T) {
 	cfg.AutoLaunch = []string{"missing"}
 	if err := Validate(cfg); err == nil {
 		t.Fatalf("expected unknown auto launch error")
+	}
+}
+
+func TestValidateRejectsInvalidTerminalRetentionLines(t *testing.T) {
+	cfg := Defaults()
+	cfg.TerminalRetentionLines = 99
+	if err := Validate(cfg); err == nil {
+		t.Fatalf("expected low terminal retention error")
+	}
+	cfg.TerminalRetentionLines = 10001
+	if err := Validate(cfg); err == nil {
+		t.Fatalf("expected high terminal retention error")
 	}
 }

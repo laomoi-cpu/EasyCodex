@@ -93,9 +93,11 @@ type mobileDefaultsResponse struct {
 }
 
 type appConfigResponse struct {
-	Instances []instanceResponse     `json:"instances"`
-	Defaults  mobileDefaultsResponse `json:"defaults"`
-	Machine   string                 `json:"machineName"`
+	Instances          []instanceResponse     `json:"instances"`
+	Defaults           mobileDefaultsResponse `json:"defaults"`
+	Machine            string                 `json:"machineName"`
+	AutoScrollTerminal bool                   `json:"autoScrollTerminal"`
+	RetentionLines     int                    `json:"terminalRetentionLines"`
 }
 
 type settingsResponse struct {
@@ -446,9 +448,11 @@ func firstHeaderValue(value string) string {
 func (s *Server) appConfig(w http.ResponseWriter, r *http.Request) {
 	cfg := s.configSnapshot()
 	writeOK(w, http.StatusOK, appConfigResponse{
-		Instances: s.instanceResponses(),
-		Defaults:  s.mobileDefaultsResponse(),
-		Machine:   effectiveMachineName(cfg),
+		Instances:          s.instanceResponses(),
+		Defaults:           s.mobileDefaultsResponse(),
+		Machine:            effectiveMachineName(cfg),
+		AutoScrollTerminal: cfg.AutoScrollTerminal,
+		RetentionLines:     cfg.TerminalRetentionLines,
 	})
 }
 
@@ -1685,8 +1689,8 @@ func parseTextQuery(w http.ResponseWriter, r *http.Request) (textQuery, bool) {
 	query := textQuery{Lines: 200, Escapes: parseBool(r.URL.Query().Get("escapes"))}
 	if raw := r.URL.Query().Get("lines"); raw != "" {
 		value, err := strconv.Atoi(raw)
-		if err != nil || value < 1 || value > 5000 {
-			writeError(w, http.StatusBadRequest, errors.New("lines must be between 1 and 5000"))
+		if err != nil || value < 1 || value > 10000 {
+			writeError(w, http.StatusBadRequest, errors.New("lines must be between 1 and 10000"))
 			return textQuery{}, false
 		}
 		query.Lines = value

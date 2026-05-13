@@ -489,6 +489,7 @@ func terminalPageHTML(lang uiLang, machineName string) string {
   <div class="connect-form">
     <label><span>%s</span><input id="dialogBaseUrl" autocomplete="off" placeholder="http://192.168.x.x:8765"></label>
     <label><span>%s</span><input id="dialogToken" autocomplete="off" placeholder="easycodex-dev-token"></label>
+    <label class="check-row"><input id="dialogAutoScrollTerminal" type="checkbox"><span>%s</span></label>
   </div>
   <div class="dialog-actions">
     <button id="terminalCheckUpdate" type="button" class="secondary icon-button" aria-label="%s" title="%s">&#x21BB;</button>
@@ -548,6 +549,7 @@ func terminalPageHTML(lang uiLang, machineName string) string {
 		html.EscapeString(lang.t("serverSettings")),
 		html.EscapeString(lang.t("agentBaseURL")),
 		html.EscapeString(lang.t("token")),
+		html.EscapeString(lang.t("autoScrollTerminal")),
 		html.EscapeString(lang.t("checkServerUpdate")),
 		html.EscapeString(lang.t("checkServerUpdate")),
 		html.EscapeString(lang.t("cancel")),
@@ -587,12 +589,14 @@ func settingsPageHTML(lang uiLang, machineName string) string {
       <label><span>%s</span><input id="publicBaseUrl" autocomplete="off" placeholder="http://100.x.y.z:8765"></label>
       <label><span>%s</span><input id="root" autocomplete="off"></label>
       <label><span>%s</span><input id="timeout" type="number" min="1" max="120"></label>
+      <label><span>%s</span><input id="terminalRetentionLines" type="number" min="100" max="10000" step="100"></label>
       <label><span>%s</span><input id="version" readonly></label>
       <label><span>%s</span><select id="uiLanguage"><option value="zh">%s</option><option value="en">%s</option></select></label>
     </div>
     <label class="check-row"><input id="regenToken" type="checkbox"><span>%s</span></label>
     <label class="check-row"><input id="lanPromptShown" type="checkbox"><span>%s</span></label>
     <label class="check-row"><input id="closeGui" type="checkbox"><span>%s</span></label>
+    <label class="check-row"><input id="autoScrollTerminal" type="checkbox"><span>%s</span></label>
   </section>
 
   <section class="panel">
@@ -646,6 +650,7 @@ func settingsPageHTML(lang uiLang, machineName string) string {
 		html.EscapeString(lang.t("publicBaseURL")),
 		html.EscapeString(lang.t("easyRoot")),
 		html.EscapeString(lang.t("commandTimeout")),
+		html.EscapeString(lang.t("retentionLines")),
 		html.EscapeString(lang.t("currentVersion")),
 		html.EscapeString(lang.t("uiLanguage")),
 		html.EscapeString(lang.t("chinese")),
@@ -653,6 +658,7 @@ func settingsPageHTML(lang uiLang, machineName string) string {
 		html.EscapeString(lang.t("regenToken")),
 		html.EscapeString(lang.t("lanPrompt")),
 		html.EscapeString(lang.t("closeGui")),
+		html.EscapeString(lang.t("autoScrollTerminal")),
 		html.EscapeString(lang.t("versionUpdate")),
 		html.EscapeString(lang.t("updateInitial")),
 		html.EscapeString(lang.t("updateNoRunning")),
@@ -747,7 +753,9 @@ const state = {
   clientId: browserClientId(),
   instanceId: 'main',
   defaults: {instanceId:'main', cwd:'D:\\mgame', command:['cmd.exe','/k','cd /d D:\\mgame && codex --dangerously-bypass-approvals-and-sandbox']},
-  panes: [], paneId: '', workingCount: 0, confirmCount: 0, paneWorking: {}, paneConfirm: {}, paneNotify: {}, statusText: '', statusKind: '', snapshotHash: '', pollTimer: 0, pollToken: 0, selectedPane: null, attachments: [], codexSessions: [], selectedCodexSessionId: ''
+  autoScrollTerminal: store.getItem('easycodex.autoScrollTerminal') !== 'false',
+  terminalRetentionLines: 1000,
+  panes: [], paneId: '', workingCount: 0, confirmCount: 0, paneWorking: {}, paneConfirm: {}, paneNotify: {}, commandDrafts: {}, outputBuffers: {}, statusText: '', statusKind: '', snapshotHash: '', pollTimer: 0, pollToken: 0, selectedPane: null, attachments: [], codexSessions: [], selectedCodexSessionId: ''
 };
 const mobileInputMedia = window.matchMedia ? window.matchMedia('(max-width: 760px)') : null;
 
@@ -764,8 +772,12 @@ function initFromHash(){
   const params = new URLSearchParams(location.hash.slice(1));
   const baseUrl = params.get('baseUrl');
   const token = params.get('token');
+  const autoScrollTerminal = params.get('autoScrollTerminal');
   if (baseUrl) state.baseUrl = trimSlash(baseUrl);
   if (token) state.token = token;
+  if (autoScrollTerminal === '0' || autoScrollTerminal === 'false') state.autoScrollTerminal = false;
+  else if (autoScrollTerminal === '1' || autoScrollTerminal === 'true') state.autoScrollTerminal = true;
+  if (autoScrollTerminal !== null) store.setItem('easycodex.autoScrollTerminal', state.autoScrollTerminal ? 'true' : 'false');
   saveConnectionFields();
   history.replaceState(null, '', location.pathname);
 }
@@ -793,6 +805,7 @@ function saveConnectionFields(){
 function openConnectionDialog(){
   $('dialogBaseUrl').value = state.baseUrl || location.origin;
   $('dialogToken').value = state.token || '';
+  $('dialogAutoScrollTerminal').checked = state.autoScrollTerminal !== false;
   const dialog = $('connectionDialog');
   if (dialog.showModal) dialog.showModal(); else dialog.setAttribute('open', 'open');
 }
@@ -803,6 +816,8 @@ function closeConnectionDialog(){
 function syncConnectionDialogFields(){
   state.baseUrl = trimSlash($('dialogBaseUrl').value || location.origin);
   state.token = String($('dialogToken').value || '').trim();
+  state.autoScrollTerminal = $('dialogAutoScrollTerminal').checked;
+  store.setItem('easycodex.autoScrollTerminal', state.autoScrollTerminal ? 'true' : 'false');
   $('baseUrl').value = state.baseUrl;
   $('browserToken').value = state.token;
   saveConnectionFields();
@@ -914,6 +929,8 @@ async function connect(){
   const cfg = await api('/api/config', {}, true);
   state.defaults = cfg.defaults || state.defaults;
   state.instanceId = state.defaults.instanceId || 'main';
+  if (store.getItem('easycodex.autoScrollTerminal') === null) state.autoScrollTerminal = cfg.autoScrollTerminal !== false;
+  state.terminalRetentionLines = normalizeRetentionLines(cfg.terminalRetentionLines);
   showConnect(false);
   setStatus(i18n.alreadyConnected, 'ok');
   await loadSessions();
@@ -958,6 +975,8 @@ function applySessionsData(data){
   Object.keys(state.paneWorking).forEach(paneId => { if (!seen[paneId]) delete state.paneWorking[paneId]; });
   Object.keys(state.paneConfirm).forEach(paneId => { if (!seen[paneId]) delete state.paneConfirm[paneId]; });
   Object.keys(state.paneNotify).forEach(paneId => { if (!seen[paneId]) delete state.paneNotify[paneId]; });
+  Object.keys(state.commandDrafts).forEach(paneId => { if (!seen[paneId]) delete state.commandDrafts[paneId]; });
+  Object.keys(state.outputBuffers).forEach(paneId => { if (!seen[paneId]) delete state.outputBuffers[paneId]; });
   state.panes = nextPanes;
   state.workingCount = Number(data.workingCount === undefined ? state.panes.filter(pane => pane.isWorking).length : data.workingCount);
   state.confirmCount = Number(data.confirmCount === undefined ? state.panes.filter(pane => pane.isConfirm).length : data.confirmCount);
@@ -1044,6 +1063,13 @@ function notifyAndroidWorkingCount(){
   if (!window.EasyCodexAndroid || !window.EasyCodexAndroid.updateWorkingCount) return;
   try { window.EasyCodexAndroid.updateWorkingCount(String(state.workingCount || 0)); } catch (_) {}
 }
+function saveCommandDraft(){
+  if (!state.paneId) return;
+  state.commandDrafts[state.paneId] = $('commandInput').value || '';
+}
+function restoreCommandDraft(paneId){
+  $('commandInput').value = state.commandDrafts[String(paneId || '')] || '';
+}
 function selectPane(paneId){
   const changed = state.paneId !== paneId;
   const clearedNotify = clearPaneNotify(paneId, false);
@@ -1051,23 +1077,31 @@ function selectPane(paneId){
     if (clearedNotify) renderPanes();
     return;
   }
+  saveCommandDraft();
   state.paneId = paneId;
   state.snapshotHash = '';
   state.pollToken++;
+  restoreCommandDraft(paneId);
   renderPanes();
   fitTerminalFont();
-  $('terminalOutput').textContent = format(i18n.loadingPane, {id: paneId});
+  if (state.outputBuffers[paneId]) renderTerminal(state.outputBuffers[paneId]);
+  else $('terminalOutput').textContent = format(i18n.loadingPane, {id: paneId});
   pollSnapshot(state.pollToken);
 }
 async function pollSnapshot(token){
   if (token !== state.pollToken || !state.paneId) return;
-  let path = '/api/instances/' + encodeURIComponent(state.instanceId) + '/panes/' + encodeURIComponent(state.paneId) + '/snapshot?lines=180&escapes=1';
+  let path = '/api/instances/' + encodeURIComponent(state.instanceId) + '/panes/' + encodeURIComponent(state.paneId) + '/snapshot?lines=' + encodeURIComponent(snapshotLineCount()) + '&escapes=1';
   if (state.snapshotHash) path += '&since=' + encodeURIComponent(state.snapshotHash);
   try {
     const data = await api(path, {}, true);
     if (token !== state.pollToken) return;
     state.snapshotHash = data.hash || state.snapshotHash;
-    if (data.changed) renderTerminal(data.text || '');
+    if (data.changed) {
+      const paneId = state.paneId;
+      const merged = mergeTerminalBuffer(state.outputBuffers[paneId] || '', data.text || '');
+      state.outputBuffers[paneId] = trimTerminalLines(merged, state.terminalRetentionLines);
+      renderTerminal(state.outputBuffers[paneId]);
+    }
     setStatus(i18n.alreadyConnected, 'ok');
     state.pollTimer = setTimeout(() => pollSnapshot(token), snapshotPollInterval());
   } catch (err) {
@@ -1090,7 +1124,10 @@ async function sendCommand(enter){
   try {
     const uploads = await uploadPendingAttachments();
     await sendRaw(appendAttachmentPaths(text, uploads), enter, true);
-    if (enter) input.value = '';
+    if (enter) {
+      input.value = '';
+      saveCommandDraft();
+    }
     if (uploads.length) clearAttachments();
   } finally {
     button.disabled = false;
@@ -1250,6 +1287,7 @@ function insertCommandInputText(text){
   const prefix = before && !/\s$/.test(before) ? ' ' : '';
   const suffix = after && !/^\s/.test(after) ? ' ' : '';
   input.value = before + prefix + text + suffix + after;
+  saveCommandDraft();
   const pos = (before + prefix + text).length;
   input.focus();
   try { input.setSelectionRange(pos, pos); } catch (_) {}
@@ -1349,7 +1387,7 @@ function unlockFullscreenOrientation(){
 function updateFullscreenButton(){
   const button = $('toggleFullscreen');
   const active = !!document.fullscreenElement;
-  button.textContent = active ? '⛶' : '⛶';
+  button.textContent = active ? '�? : '�?;
   button.title = active ? (i18n.fullscreenExit || 'Exit Fullscreen') : (i18n.fullscreen || 'Fullscreen');
   button.setAttribute('aria-label', button.title);
 }
@@ -1529,10 +1567,36 @@ function utf8Base64(text){
   bytes.forEach(byte => binary += String.fromCharCode(byte));
   return btoa(binary);
 }
+function normalizeRetentionLines(value){
+  const lines = Number(value || 1000);
+  if (!Number.isFinite(lines)) return 1000;
+  return Math.max(100, Math.min(10000, Math.floor(lines)));
+}
+function snapshotLineCount(){
+  return normalizeRetentionLines(state.terminalRetentionLines);
+}
+function mergeTerminalBuffer(current, snapshot){
+  current = String(current || '');
+  snapshot = String(snapshot || '');
+  if (!current) return snapshot;
+  if (!snapshot || current.endsWith(snapshot)) return current;
+  const max = Math.min(current.length, snapshot.length);
+  const min = Math.min(80, max);
+  for (let size = max; size >= min; size--) {
+    if (current.slice(-size) === snapshot.slice(0, size)) return current + snapshot.slice(size);
+  }
+  return snapshot;
+}
+function trimTerminalLines(text, limit){
+  const lines = String(text || '').split('\n');
+  const keep = normalizeRetentionLines(limit);
+  if (lines.length <= keep) return String(text || '');
+  return lines.slice(lines.length - keep).join('\n');
+}
 function renderTerminal(text){
   const output = $('terminalOutput');
   output.innerHTML = ansiToHTML(text);
-  output.scrollTop = output.scrollHeight;
+  if (state.autoScrollTerminal) output.scrollTop = output.scrollHeight;
 }
 function ansiToHTML(text){
   let html = '', fg = '', bg = '', start = 0, index = 0;
@@ -1643,6 +1707,7 @@ $('spawnCommand').onchange = () => updateSpawnPanel();
 $('loadCodexSessions').onclick = () => loadCodexSessions().catch(err => setStatus(err.message, 'err'));
 $('spawnStart').onclick = () => startSpawnFromDialog().catch(err => setStatus(err.message, 'err'));
 $('sendForm').addEventListener('submit', event => { event.preventDefault(); sendCommand(true).catch(err => setStatus(err.message, 'err')); });
+$('commandInput').addEventListener('input', saveCommandDraft);
 $('commandInput').addEventListener('pointerdown', handleCommandInputIntent);
 $('commandInput').addEventListener('click', handleCommandInputIntent);
 $('commandInput').addEventListener('focus', event => {
@@ -1774,7 +1839,7 @@ function fill(){
   $('listen').value=c.listen||''; $('displayName').value=c.displayName||''; $('token').value=c.token||''; $('publicBaseUrl').value=c.publicBaseUrl||''; $('root').value=c.root||'';
   $('version').value=currentVersion||'dev';
   $('uiLanguage').value=c.uiLanguage||currentUILanguage||'en';
-  $('timeout').value=c.commandTimeoutSeconds||5; $('regenToken').checked=!!c.regenerateTokenOnStart; $('lanPromptShown').checked=!!c.lanListenPromptShown; $('closeGui').checked=!!c.closeLaunchedGuiOnExit;
+  $('timeout').value=c.commandTimeoutSeconds||5; $('terminalRetentionLines').value=c.terminalRetentionLines||1000; $('regenToken').checked=!!c.regenerateTokenOnStart; $('lanPromptShown').checked=!!c.lanListenPromptShown; $('closeGui').checked=!!c.closeLaunchedGuiOnExit; $('autoScrollTerminal').checked=c.autoScrollTerminal!==false;
   $('defaultCwd').value=(c.mobileDefaults&&c.mobileDefaults.cwd)||'';
   $('defaultCommand').value=((c.mobileDefaults&&c.mobileDefaults.command)||[]).join('\n');
   renderInstances(c.instances||[]); renderDefaults(); renderAutoLaunch();
@@ -1817,9 +1882,11 @@ function collect(){
   return {
     listen:$('listen').value.trim(), displayName:$('displayName').value.trim(), token:$('token').value.trim(), publicBaseUrl:$('publicBaseUrl').value.trim(), uiLanguage:$('uiLanguage').value, root:$('root').value.trim(),
     commandTimeoutSeconds:parseInt($('timeout').value,10)||5,
+    terminalRetentionLines:parseInt($('terminalRetentionLines').value,10)||1000,
     regenerateTokenOnStart:$('regenToken').checked,
     lanListenPromptShown:$('lanPromptShown').checked,
     closeLaunchedGuiOnExit:$('closeGui').checked,
+    autoScrollTerminal:$('autoScrollTerminal').checked,
     instances,
     autoLaunch:[...document.querySelectorAll('#autoLaunch input:checked')].map(x=>x.value),
     mobileDefaults:{ instanceId:$('defaultInstance').value, cwd:$('defaultCwd').value.trim(), command:lines($('defaultCommand').value) }
