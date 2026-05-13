@@ -1984,6 +1984,7 @@ function collect(){
     lanListenPromptShown:$('lanPromptShown').checked,
     closeLaunchedGuiOnExit:$('closeGui').checked,
     autoScrollTerminal:$('autoScrollTerminal').checked,
+    codexSessionTitles: currentConfig.codexSessionTitles || {},
     instances,
     autoLaunch:[...document.querySelectorAll('#autoLaunch input:checked')].map(x=>x.value),
     mobileDefaults:{ instanceId:$('defaultInstance').value, cwd:$('defaultCwd').value.trim(), command:lines($('defaultCommand').value) }

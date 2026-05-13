@@ -329,6 +329,49 @@ func TestSettingsSaveWritesConfigAndUpdatesAuth(t *testing.T) {
 	}
 }
 
+func TestSettingsSavePreservesCodexSessionTitlesWhenOmitted(t *testing.T) {
+	cfg := config.Defaults()
+	cfg.Listen = "127.0.0.1:0"
+	cfg.Root = `D:\EasyCodex`
+	cfg.Token = "secret"
+	cfg.CodexSessionTitles = map[string]string{
+		"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee": "Build fix",
+	}
+	path := filepath.Join(t.TempDir(), "config.json")
+	srv, err := NewWithConfigPath(cfg, path, &fakeWezTerm{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	body := bytes.NewBufferString(`{
+		"listen":"127.0.0.1:0",
+		"root":"D:\\EasyCodex",
+		"token":"secret",
+		"commandTimeoutSeconds":5,
+		"autoScrollTerminal":true,
+		"terminalRetentionLines":1000,
+		"autoLaunch":["main"],
+		"instances":[{"id":"main","name":"main","class":"easycodex"}],
+		"mobileDefaults":{"instanceId":"main","cwd":"D:\\mgame","command":["cmd.exe","/k","codex"]}
+	}`)
+	req := httptest.NewRequest(http.MethodPost, "/api/settings", body)
+	req.RemoteAddr = "127.0.0.1:12345"
+	rec := httptest.NewRecorder()
+
+	srv.Handler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d body = %s", rec.Code, rec.Body.String())
+	}
+	loaded, found, err := config.Load(path)
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+	if !found || loaded.CodexSessionTitles["aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"] != "Build fix" {
+		t.Fatalf("codex session titles were not preserved: found=%v cfg=%#v", found, loaded.CodexSessionTitles)
+	}
+}
+
 func TestSaveCodexSessionTitleWritesConfig(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
@@ -452,6 +495,9 @@ func TestSettingsIncludesVersion(t *testing.T) {
 		!strings.Contains(body, "terminalRetentionLines:parseInt($('terminalRetentionLines').value,10)||1000") ||
 		!strings.Contains(body, "$('terminalRetentionLines').value=c.terminalRetentionLines||1000") {
 		t.Fatalf("expected terminal retention setting in settings page: %s", body)
+	}
+	if !strings.Contains(body, "codexSessionTitles: currentConfig.codexSessionTitles || {}") {
+		t.Fatalf("expected codex session titles to round-trip in settings page: %s", body)
 	}
 }
 

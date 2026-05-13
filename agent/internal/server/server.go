@@ -1524,6 +1524,10 @@ func (s *Server) saveSettings(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
+	current := s.configSnapshot()
+	if next.CodexSessionTitles == nil {
+		next.CodexSessionTitles = cloneStringMap(current.CodexSessionTitles)
+	}
 	if next.Token == "" {
 		token, err := config.GenerateToken()
 		if err != nil {
@@ -1538,7 +1542,6 @@ func (s *Server) saveSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	current := s.configSnapshot()
 	if err := config.Save(s.configPath, next); err != nil {
 		writeError(w, http.StatusInternalServerError, err)
 		return
