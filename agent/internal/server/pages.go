@@ -44,7 +44,7 @@ func (s *Server) connectionsPage(w http.ResponseWriter, r *http.Request) {
 func (s *Server) terminalPage(w http.ResponseWriter, r *http.Request) {
 	cfg := s.configSnapshot()
 	lang := normalizeUILang(cfg.UILanguage)
-	writeHTML(w, terminalPageHTML(lang, effectiveMachineName(cfg)))
+	writeHTML(w, terminalPageHTML(lang, effectiveMachineName(cfg), isLocalRequest(r)))
 }
 
 func (s *Server) statusPage(w http.ResponseWriter, r *http.Request) {
@@ -389,7 +389,7 @@ statusTestButton.addEventListener('click', runNetworkTests);
 `
 }
 
-func terminalPageHTML(lang uiLang, machineName string) string {
+func terminalPageHTML(lang uiLang, machineName string, localRequest bool) string {
 	body := fmt.Sprintf(`
 <section class="terminal-page">
   <section id="connectPanel" class="panel terminal-connect">
@@ -402,6 +402,10 @@ func terminalPageHTML(lang uiLang, machineName string) string {
       <label><span>%s</span><input id="baseUrl" autocomplete="off" placeholder="http://192.168.x.x:8765"></label>
       <label><span>%s</span><input id="browserToken" autocomplete="off" placeholder="easycodex-dev-token"></label>
       <button type="submit">%s</button>
+      <div id="androidBridgeConnectActions" class="android-bridge-bar" hidden>
+        <button id="androidBridgeConnectScan" type="button" class="secondary">%s</button>
+        <button id="androidBridgeConnectSettings" type="button" class="secondary">%s</button>
+      </div>
     </form>
   </section>
 
@@ -521,6 +525,8 @@ func terminalPageHTML(lang uiLang, machineName string) string {
 		html.EscapeString(lang.t("agentBaseURL")),
 		html.EscapeString(lang.t("token")),
 		html.EscapeString(lang.t("connect")),
+		html.EscapeString(lang.t("scan")),
+		html.EscapeString(lang.t("settingsShort")),
 		html.EscapeString(lang.t("offline")),
 		html.EscapeString(lang.t("scan")),
 		html.EscapeString(lang.t("settingsShort")),
@@ -565,7 +571,11 @@ func terminalPageHTML(lang uiLang, machineName string) string {
 	if err != nil {
 		machineJSON = []byte(`""`)
 	}
-	script := `<script>const terminalMachineName = ` + string(machineJSON) + `;</script><script>` + terminalJS(lang) + `</script>`
+	localJSON, err := json.Marshal(localRequest)
+	if err != nil {
+		localJSON = []byte(`false`)
+	}
+	script := `<script>const terminalMachineName = ` + string(machineJSON) + `;const terminalLocalRequest = ` + string(localJSON) + `;</script><script>` + terminalJS(lang) + `</script>`
 	return pageShellWithChrome(lang, "terminal", "terminal", body, script, false, machineName)
 }
 
@@ -803,7 +813,7 @@ function sameOriginBaseUrl(value){
   try { return new URL(value || '', location.href).origin === location.origin; } catch (_) { return false; }
 }
 function shouldAutoConnectWithoutToken(){
-  return isLocalBrowser() && sameOriginBaseUrl(state.baseUrl);
+  return (isLocalBrowser() || terminalLocalRequest === true) && sameOriginBaseUrl(state.baseUrl);
 }
 function connectionRedirectURL(){
   let url;
@@ -921,6 +931,8 @@ function setupAndroidBridgeChrome(){
   document.body.classList.add('android-webview');
   const bar = $('androidBridgeBar');
   if (bar) bar.hidden = false;
+  const connectActions = $('androidBridgeConnectActions');
+  if (connectActions) connectActions.hidden = false;
   renderStatusButtons();
 }
 function callAndroidBridge(name){
@@ -1735,6 +1747,8 @@ $('connectionStatus').onclick = () => connect().catch(err => setStatus(err.messa
 $('androidBridgeStatus').onclick = () => connect().catch(err => setStatus(err.message, 'err'));
 $('androidBridgeScan').onclick = () => callAndroidBridge('scanPairing');
 $('androidBridgeSettings').onclick = () => callAndroidBridge('openSettings');
+$('androidBridgeConnectScan').onclick = () => callAndroidBridge('scanPairing');
+$('androidBridgeConnectSettings').onclick = () => callAndroidBridge('openSettings');
 $('toggleFullscreen').onclick = () => toggleFullscreen();
 $('editConnection').onclick = () => openConnectionDialog();
 $('newSession').onclick = () => openSpawnDialog();

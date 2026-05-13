@@ -760,10 +760,13 @@ func TestTerminalPageIsAvailableRemotely(t *testing.T) {
 		!strings.Contains(body, ".page-terminal .send-row{position:sticky") ||
 		!strings.Contains(body, `id="androidBridgeBar"`) ||
 		!strings.Contains(body, `id="androidBridgeScan"`) ||
+		!strings.Contains(body, `id="androidBridgeConnectActions"`) ||
+		!strings.Contains(body, `id="androidBridgeConnectScan"`) ||
 		!strings.Contains(body, `.page-terminal.android-webview .terminal-statusbar{display:none!important}`) ||
 		!strings.Contains(body, "function setupAndroidBridgeChrome()") ||
 		!strings.Contains(body, "window.easycodexSetupAndroidBridge = setupAndroidBridgeChrome") ||
 		!strings.Contains(body, "$('androidBridgeScan').onclick = () => callAndroidBridge('scanPairing')") ||
+		!strings.Contains(body, "$('androidBridgeConnectScan').onclick = () => callAndroidBridge('scanPairing')") ||
 		!strings.Contains(body, `id="mobileInputDialog"`) ||
 		!strings.Contains(body, `id="mobileCommandInput"`) ||
 		!strings.Contains(body, `id="mobileAddAttachment"`) ||
@@ -851,6 +854,7 @@ func TestTerminalPageIsAvailableRemotely(t *testing.T) {
 		!strings.Contains(body, "function connectionRedirectURL()") ||
 		!strings.Contains(body, "location.replace(redirectURL)") ||
 		!strings.Contains(body, "function shouldAutoConnectWithoutToken()") ||
+		!strings.Contains(body, "terminalLocalRequest === true") ||
 		!strings.Contains(body, "showConnect(!(state.token || shouldAutoConnectWithoutToken()))") ||
 		!strings.Contains(body, "if (state.token || shouldAutoConnectWithoutToken()) connect().catch") ||
 		!strings.Contains(body, "return isLocalBrowser() ? 300 : 1000") ||
