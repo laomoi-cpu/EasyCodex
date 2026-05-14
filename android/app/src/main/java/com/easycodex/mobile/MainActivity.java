@@ -326,6 +326,22 @@ public class MainActivity extends Activity {
         }
 
         @JavascriptInterface
+        public void openExternalUrl(String url) {
+            main.post(() -> {
+                if (!isTrustedWebPage()) {
+                    setStatus("Open URL failed: untrusted page", "err");
+                    return;
+                }
+                Uri uri = Uri.parse(url == null ? "" : url.trim());
+                if (!isBrowsableHttpUrl(uri)) {
+                    setStatus("Open URL failed: unsupported URL", "err");
+                    return;
+                }
+                openExternalUri(uri);
+            });
+        }
+
+        @JavascriptInterface
         public void updateWorkingCount(String value) {
             int count = 0;
             try {
@@ -474,6 +490,26 @@ public class MainActivity extends Activity {
         }
         String trusted = trimTrailingSlash(baseUrl);
         return current.equals(trusted) || current.startsWith(trusted + "/") || current.startsWith(trusted + "#");
+    }
+
+    private boolean isBrowsableHttpUrl(Uri uri) {
+        if (uri == null) {
+            return false;
+        }
+        String scheme = uri.getScheme();
+        return ("http".equals(scheme) || "https".equals(scheme))
+                && uri.getEncodedAuthority() != null
+                && !uri.getEncodedAuthority().isEmpty();
+    }
+
+    private void openExternalUri(Uri uri) {
+        try {
+            Intent intent = new Intent(Intent.ACTION_VIEW, uri);
+            intent.addCategory(Intent.CATEGORY_BROWSABLE);
+            startActivity(intent);
+        } catch (Exception ex) {
+            setStatus("Open URL failed: " + ex.getMessage(), "err");
+        }
     }
 
     private void testConnection(boolean reloadOnSuccess) {
