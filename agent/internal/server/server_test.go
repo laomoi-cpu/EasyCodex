@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
@@ -17,17 +18,21 @@ import (
 )
 
 type fakeWezTerm struct {
-	lastClass   string
-	lastPaneID  string
-	lastCWD     string
-	lastLines   int
-	lastEscapes bool
-	lastText    string
-	lastNoPaste bool
-	lastCommand []string
-	sendCalls   []sendCall
-	launched    bool
-	killed      bool
+	lastClass     string
+	lastPaneID    string
+	lastCWD       string
+	lastLines     int
+	lastEscapes   bool
+	lastText      string
+	textByPane    map[string]string
+	lastNoPaste   bool
+	lastCommand   []string
+	lastNewWindow bool
+	sendCalls     []sendCall
+	tabTitles     []tabTitleCall
+	tabTitleErr   error
+	launched      bool
+	killed        bool
 }
 
 type sendCall struct {
@@ -35,6 +40,12 @@ type sendCall struct {
 	paneID  string
 	text    string
 	noPaste bool
+}
+
+type tabTitleCall struct {
+	class  string
+	paneID string
+	title  string
 }
 
 func (fake *fakeWezTerm) Launch(ctx context.Context, class string) (int, error) {
@@ -94,6 +105,11 @@ func (fake *fakeWezTerm) GetText(ctx context.Context, class, paneID string, line
 	fake.lastPaneID = paneID
 	fake.lastLines = lines
 	fake.lastEscapes = escapes
+	if fake.textByPane != nil {
+		if text, ok := fake.textByPane[paneID]; ok {
+			return text, nil
+		}
+	}
 	return "hello", nil
 }
 
@@ -111,6 +127,17 @@ func (fake *fakeWezTerm) SendText(ctx context.Context, class, paneID, text strin
 	return nil
 }
 
+func (fake *fakeWezTerm) SetTabTitle(ctx context.Context, class, paneID, title string) error {
+	fake.lastClass = class
+	fake.lastPaneID = paneID
+	fake.tabTitles = append(fake.tabTitles, tabTitleCall{
+		class:  class,
+		paneID: paneID,
+		title:  title,
+	})
+	return fake.tabTitleErr
+}
+
 func (fake *fakeWezTerm) KillPane(ctx context.Context, class, paneID string) error {
 	fake.lastClass = class
 	fake.lastPaneID = paneID
@@ -122,6 +149,7 @@ func (fake *fakeWezTerm) Spawn(ctx context.Context, class, paneID, cwd string, n
 	fake.lastClass = class
 	fake.lastPaneID = paneID
 	fake.lastCWD = cwd
+	fake.lastNewWindow = newWindow
 	fake.lastCommand = append([]string(nil), command...)
 	return "9", nil
 }
@@ -133,7 +161,7 @@ func testServer(t *testing.T) (*Server, *fakeWezTerm) {
 	t.Setenv("USERPROFILE", home)
 	cfg := config.Config{
 		Listen: "127.0.0.1:0",
-		Root:   `D:\EasyCodex`,
+		Root:   filepath.Join(home, "root"),
 		Token:  "secret",
 		Instances: []config.Instance{
 			{ID: "main", Name: "main", Class: "easycodex"},
@@ -993,6 +1021,25 @@ func writeCodexSessionForTest(t *testing.T, home, sessionID, cwd string) string 
 	return path
 }
 
+func writeCodexSessionWithMessageForTest(t *testing.T, home, sessionID, cwd, message string) string {
+	t.Helper()
+	path := writeCodexSessionForTest(t, home, sessionID, cwd)
+	cwdJSON, err := json.Marshal(cwd)
+	if err != nil {
+		t.Fatal(err)
+	}
+	messageJSON, err := json.Marshal(message)
+	if err != nil {
+		t.Fatal(err)
+	}
+	data := `{"type":"session_meta","payload":{"id":"` + sessionID + `","cwd":` + string(cwdJSON) + `,"timestamp":"2026-05-13T08:00:00Z"}}` + "\n" +
+		`{"type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":` + string(messageJSON) + `}]}}` + "\n"
+	if err := os.WriteFile(path, []byte(data), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
 func TestConsoleNavOmitsTerminalAndIncludesConnections(t *testing.T) {
 	srv, _ := testServer(t)
 	req := httptest.NewRequest(http.MethodGet, "/status", nil)
@@ -1011,10 +1058,33 @@ func TestConsoleNavOmitsTerminalAndIncludesConnections(t *testing.T) {
 	if !strings.Contains(body, `href="/connections">Connections`) {
 		t.Fatalf("connections link should be in console nav: %s", body)
 	}
+	if !strings.Contains(body, `href="/sessions">Sessions`) {
+		t.Fatalf("session management link should be in console nav: %s", body)
+	}
 	if !strings.Contains(body, `id="runNetworkTests"`) ||
 		!strings.Contains(body, "/api/network-tests") ||
 		!strings.Contains(body, "HTTP Service Test") {
 		t.Fatalf("network test controls should be in status page: %s", body)
+	}
+}
+
+func TestSessionsPageIncludesManagementControls(t *testing.T) {
+	srv, _ := testServer(t)
+	req := httptest.NewRequest(http.MethodGet, "/sessions", nil)
+	req.RemoteAddr = "127.0.0.1:12345"
+	rec := httptest.NewRecorder()
+
+	srv.Handler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d body = %s", rec.Code, rec.Body.String())
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, `id="sessionSearch"`) ||
+		!strings.Contains(body, "/api/codex/sessions?all=1") ||
+		!strings.Contains(body, "/open") ||
+		!strings.Contains(body, "Manage Codex history sessions") {
+		t.Fatalf("sessions page should include management controls: %s", body)
 	}
 }
 
@@ -1290,6 +1360,135 @@ func TestCodexSessionsReturnCustomTitles(t *testing.T) {
 	}
 	if !payload.OK || len(payload.Data.Sessions) != 1 || payload.Data.Sessions[0].CustomTitle != "Release followup" || payload.Data.Sessions[0].DisplayTitle != "Release followup" {
 		t.Fatalf("unexpected sessions: %#v", payload.Data.Sessions)
+	}
+}
+
+func TestCodexSessionsUseShortSummaryAsDefaultTitle(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	sessionID := "cdcdcdcd-dddd-eeee-ffff-000000000000"
+	writeCodexSessionWithMessageForTest(t, home, sessionID, `D:\mgame`, "1234567890abcdef")
+	cfg := config.Config{
+		Listen: "127.0.0.1:0",
+		Root:   t.TempDir(),
+		Token:  "secret",
+		Instances: []config.Instance{
+			{ID: "main", Name: "main", Class: "easycodex"},
+		},
+	}
+	srv, err := New(cfg, &fakeWezTerm{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/codex/sessions?limit=20", nil)
+	req.Header.Set("Authorization", "Bearer secret")
+	rec := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d body = %s", rec.Code, rec.Body.String())
+	}
+	var payload struct {
+		OK   bool `json:"ok"`
+		Data struct {
+			Sessions []codexSessionItem `json:"sessions"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("invalid json: %v", err)
+	}
+	if !payload.OK || len(payload.Data.Sessions) != 1 || payload.Data.Sessions[0].Summary != "1234567890abcdef" || payload.Data.Sessions[0].CustomTitle != "" || payload.Data.Sessions[0].DisplayTitle != "1234567890abcdef" {
+		t.Fatalf("unexpected sessions: %#v", payload.Data.Sessions)
+	}
+}
+
+func TestCodexSessionsSearchesHistoryContent(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	matchingID := "dddddddd-eeee-ffff-0000-111111111111"
+	otherID := "eeeeeeee-ffff-0000-1111-222222222222"
+	matchingPath := writeCodexSessionForTest(t, home, matchingID, `D:\mgame`)
+	if err := os.WriteFile(matchingPath, []byte(`{"type":"session_meta","payload":{"id":"`+matchingID+`","cwd":"D:\\mgame","timestamp":"2026-05-13T08:00:00Z"}}`+"\n"+`{"type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"please inspect the launch regression"}]}}`+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	writeCodexSessionForTest(t, home, otherID, `D:\other`)
+	cfg := config.Config{
+		Listen: "127.0.0.1:0",
+		Root:   t.TempDir(),
+		Token:  "secret",
+		Instances: []config.Instance{
+			{ID: "main", Name: "main", Class: "easycodex"},
+		},
+	}
+	srv, err := New(cfg, &fakeWezTerm{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/codex/sessions?all=1&q=launch%20regression", nil)
+	req.Header.Set("Authorization", "Bearer secret")
+	rec := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d body = %s", rec.Code, rec.Body.String())
+	}
+	var payload struct {
+		OK   bool `json:"ok"`
+		Data struct {
+			Sessions []codexSessionItem `json:"sessions"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("invalid json: %v", err)
+	}
+	if !payload.OK || len(payload.Data.Sessions) != 1 || payload.Data.Sessions[0].ID != matchingID {
+		t.Fatalf("unexpected sessions: %#v", payload.Data.Sessions)
+	}
+}
+
+func TestOpenCodexSessionSpawnsResumeCommand(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	sessionID := "ffffffff-0000-1111-2222-333333333333"
+	writeCodexSessionForTest(t, home, sessionID, `D:\mgame`)
+	cfg := config.Config{
+		Listen:             "127.0.0.1:0",
+		Root:               t.TempDir(),
+		Token:              "secret",
+		CodexSessionTitles: map[string]string{sessionID: "Resume me"},
+		Instances: []config.Instance{
+			{ID: "main", Name: "main", Class: "easycodex"},
+		},
+		MobileDefaults: config.MobileDefaults{InstanceID: "main", CWD: `D:\fallback`},
+	}
+	fake := &fakeWezTerm{}
+	srv, err := New(cfg, fake, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/codex/sessions/"+sessionID+"/open", bytes.NewBufferString(`{"instanceId":"main"}`))
+	req.RemoteAddr = "127.0.0.1:12345"
+	rec := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d body = %s", rec.Code, rec.Body.String())
+	}
+	if strings.Join(fake.lastCommand, " ") != "cmd.exe /k codex resume --dangerously-bypass-approvals-and-sandbox "+sessionID {
+		t.Fatalf("unexpected command: %#v", fake.lastCommand)
+	}
+	if fake.lastCWD != `D:\mgame` || fake.lastNewWindow {
+		t.Fatalf("unexpected spawn cwd/newWindow: cwd=%q newWindow=%v", fake.lastCWD, fake.lastNewWindow)
+	}
+	inputs := srv.paneInputsSnapshot("main")
+	if inputs["9"].CodexSessionID != sessionID {
+		t.Fatalf("codex session mapping was not recorded: %#v", inputs)
+	}
+	if len(fake.tabTitles) != 1 || fake.tabTitles[0] != (tabTitleCall{class: "easycodex", paneID: "9", title: "Resume me"}) {
+		t.Fatalf("title was not synced to opened pane: %#v", fake.tabTitles)
 	}
 }
 
@@ -1820,8 +2019,96 @@ func TestSavePaneCodexSessionRecordsMapping(t *testing.T) {
 	}
 }
 
+func TestPaneLastInputPersistsAcrossServerRestart(t *testing.T) {
+	root := t.TempDir()
+	cfg := config.Config{
+		Listen: "127.0.0.1:0",
+		Root:   root,
+		Token:  "secret",
+		Instances: []config.Instance{
+			{ID: "main", Name: "main", Class: "easycodex"},
+		},
+	}
+	srv, err := New(cfg, &fakeWezTerm{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	srv.recordPaneInput("main", "3", "please inspect this failing build")
+
+	if _, err := os.Stat(paneInputsStatePath(root)); err != nil {
+		t.Fatalf("pane input state was not saved: %v", err)
+	}
+	reloaded, err := New(cfg, &fakeWezTerm{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	inputs := reloaded.paneInputsSnapshot("main")
+	input := inputs["3"]
+	if input.Text != "please inspect this ..." {
+		t.Fatalf("last input was not restored: %#v", inputs)
+	}
+	if input.UpdatedAt.IsZero() {
+		t.Fatalf("updated time was not restored: %#v", input)
+	}
+}
+
+func TestPaneCodexSessionMappingPersistsAcrossServerRestart(t *testing.T) {
+	root := t.TempDir()
+	cfg := config.Config{
+		Listen: "127.0.0.1:0",
+		Root:   root,
+		Token:  "secret",
+		Instances: []config.Instance{
+			{ID: "main", Name: "main", Class: "easycodex"},
+		},
+	}
+	sessionID := "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+	srv, err := New(cfg, &fakeWezTerm{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	srv.recordPaneCodexSession("main", "3", sessionID)
+
+	reloaded, err := New(cfg, &fakeWezTerm{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	inputs := reloaded.paneInputsSnapshot("main")
+	if inputs["3"].CodexSessionID != sessionID {
+		t.Fatalf("codex session mapping was not restored: %#v", inputs)
+	}
+}
+
+func TestCorruptPaneInputStateIsIgnored(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Dir(paneInputsStatePath(root)), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(paneInputsStatePath(root), []byte("{not json"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg := config.Config{
+		Listen: "127.0.0.1:0",
+		Root:   root,
+		Token:  "secret",
+		Instances: []config.Instance{
+			{ID: "main", Name: "main", Class: "easycodex"},
+		},
+	}
+
+	srv, err := New(cfg, &fakeWezTerm{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if inputs := srv.paneInputsSnapshot("main"); len(inputs) != 0 {
+		t.Fatalf("corrupt pane input state should be ignored: %#v", inputs)
+	}
+}
+
 func TestSaveTitleAfterPaneCodexSessionMapping(t *testing.T) {
-	srv, _ := testServer(t)
+	srv, fake := testServer(t)
 	sessionID := "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
 	mapReq := httptest.NewRequest(http.MethodPut, "/api/instances/main/panes/3/codex-session", bytes.NewBufferString(`{"codexSessionId":"`+sessionID+`"}`))
 	mapReq.Header.Set("Authorization", "Bearer secret")
@@ -1837,6 +2124,9 @@ func TestSaveTitleAfterPaneCodexSessionMapping(t *testing.T) {
 	srv.Handler().ServeHTTP(titleRec, titleReq)
 	if titleRec.Code != http.StatusOK {
 		t.Fatalf("title status = %d body = %s", titleRec.Code, titleRec.Body.String())
+	}
+	if len(fake.tabTitles) != 1 || fake.tabTitles[0] != (tabTitleCall{class: "easycodex", paneID: "3", title: "Battle tools"}) {
+		t.Fatalf("unexpected tab title sync calls: %#v", fake.tabTitles)
 	}
 
 	req := httptest.NewRequest(http.MethodGet, "/api/instances/main/sessions", nil)
@@ -1857,5 +2147,148 @@ func TestSaveTitleAfterPaneCodexSessionMapping(t *testing.T) {
 	}
 	if !payload.OK || payload.Data.Panes[0].CodexSessionID != sessionID || payload.Data.Panes[0].CustomTitle != "Battle tools" || payload.Data.Panes[0].DisplayTitle != "Battle tools" {
 		t.Fatalf("unexpected panes: %#v", payload.Data.Panes)
+	}
+	if len(fake.tabTitles) != 1 {
+		t.Fatalf("unchanged sessions refresh should not resync tab title: %#v", fake.tabTitles)
+	}
+}
+
+func TestSessionsSyncsSavedCodexSessionTitleToWezTerm(t *testing.T) {
+	srv, fake := testServer(t)
+	sessionID := "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+	cfg := srv.configSnapshot()
+	cfg.CodexSessionTitles = map[string]string{sessionID: "Restored title"}
+	srv.setConfig(cfg)
+	srv.recordPaneCodexSession("main", "3", sessionID)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/instances/main/sessions", nil)
+	req.Header.Set("Authorization", "Bearer secret")
+	rec := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("sessions status = %d body = %s", rec.Code, rec.Body.String())
+	}
+	if len(fake.tabTitles) != 1 || fake.tabTitles[0] != (tabTitleCall{class: "easycodex", paneID: "3", title: "Restored title"}) {
+		t.Fatalf("unexpected tab title sync calls: %#v", fake.tabTitles)
+	}
+
+	rec = httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("second sessions status = %d body = %s", rec.Code, rec.Body.String())
+	}
+	if len(fake.tabTitles) != 1 {
+		t.Fatalf("unchanged sessions refresh should not resync tab title: %#v", fake.tabTitles)
+	}
+}
+
+func TestForceSyncWezTermTitlesUsesDefaultSummaryTitleAndBypassesCache(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	sessionID := "abababab-bbbb-cccc-dddd-eeeeeeeeeeee"
+	writeCodexSessionWithMessageForTest(t, home, sessionID, `D:\mgame`, "default-title-from-summary")
+	cfg := config.Config{
+		Listen: "127.0.0.1:0",
+		Root:   t.TempDir(),
+		Token:  "secret",
+		Instances: []config.Instance{
+			{ID: "main", Name: "main", Class: "easycodex"},
+		},
+	}
+	fake := &fakeWezTerm{}
+	srv, err := New(cfg, fake, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv.recordPaneCodexSession("main", "3", sessionID)
+
+	srv.ForceSyncWezTermTitles(context.Background())
+	srv.ForceSyncWezTermTitles(context.Background())
+
+	expected := tabTitleCall{class: "easycodex", paneID: "3", title: "default-title-from-s"}
+	if len(fake.tabTitles) != 2 || fake.tabTitles[0] != expected || fake.tabTitles[1] != expected {
+		t.Fatalf("unexpected forced tab title sync calls: %#v", fake.tabTitles)
+	}
+}
+
+func TestForceSyncWezTermTitlesHydratesPaneSessionFromText(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	sessionID := "acacacac-bbbb-cccc-dddd-eeeeeeeeeeee"
+	writeCodexSessionWithMessageForTest(t, home, sessionID, `D:\mgame`, "hydrated-title-summary")
+	cfg := config.Config{
+		Listen: "127.0.0.1:0",
+		Root:   t.TempDir(),
+		Token:  "secret",
+		Instances: []config.Instance{
+			{ID: "main", Name: "main", Class: "easycodex"},
+		},
+	}
+	fake := &fakeWezTerm{textByPane: map[string]string{
+		"3": "gpt-5.5 high · C:\\projects\\mgame · Context 49% left · Fast on · " + sessionID,
+	}}
+	srv, err := New(cfg, fake, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	srv.ForceSyncWezTermTitles(context.Background())
+
+	inputs := srv.paneInputsSnapshot("main")
+	if inputs["3"].CodexSessionID != sessionID {
+		t.Fatalf("codex session mapping was not hydrated: %#v", inputs)
+	}
+	expected := tabTitleCall{class: "easycodex", paneID: "3", title: "hydrated-title-summa"}
+	if len(fake.tabTitles) != 1 || fake.tabTitles[0] != expected {
+		t.Fatalf("unexpected forced tab title sync calls: %#v", fake.tabTitles)
+	}
+}
+
+func TestSaveCodexSessionTitleSyncFailureDoesNotFailRequest(t *testing.T) {
+	srv, fake := testServer(t)
+	fake.tabTitleErr = errors.New("wezterm unavailable")
+	sessionID := "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+	srv.recordPaneCodexSession("main", "3", sessionID)
+
+	titleReq := httptest.NewRequest(http.MethodPut, "/api/codex/sessions/"+sessionID+"/title", bytes.NewBufferString(`{"title":"Still saved"}`))
+	titleReq.Header.Set("Authorization", "Bearer secret")
+	titleRec := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(titleRec, titleReq)
+	if titleRec.Code != http.StatusOK {
+		t.Fatalf("title status = %d body = %s", titleRec.Code, titleRec.Body.String())
+	}
+	if len(fake.tabTitles) != 1 {
+		t.Fatalf("expected attempted tab title sync: %#v", fake.tabTitles)
+	}
+	cfg := srv.configSnapshot()
+	if cfg.CodexSessionTitles[sessionID] != "Still saved" {
+		t.Fatalf("title was not saved after sync failure: %#v", cfg.CodexSessionTitles)
+	}
+}
+
+func TestClearingCodexSessionTitleClearsWezTermTabTitle(t *testing.T) {
+	srv, fake := testServer(t)
+	sessionID := "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+	srv.recordPaneCodexSession("main", "3", sessionID)
+
+	titleReq := httptest.NewRequest(http.MethodPut, "/api/codex/sessions/"+sessionID+"/title", bytes.NewBufferString(`{"title":"Battle tools"}`))
+	titleReq.Header.Set("Authorization", "Bearer secret")
+	titleRec := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(titleRec, titleReq)
+	if titleRec.Code != http.StatusOK {
+		t.Fatalf("title status = %d body = %s", titleRec.Code, titleRec.Body.String())
+	}
+
+	clearReq := httptest.NewRequest(http.MethodPut, "/api/codex/sessions/"+sessionID+"/title", bytes.NewBufferString(`{"title":""}`))
+	clearReq.Header.Set("Authorization", "Bearer secret")
+	clearRec := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(clearRec, clearReq)
+	if clearRec.Code != http.StatusOK {
+		t.Fatalf("clear status = %d body = %s", clearRec.Code, clearRec.Body.String())
+	}
+	if len(fake.tabTitles) != 2 || fake.tabTitles[1] != (tabTitleCall{class: "easycodex", paneID: "3", title: ""}) {
+		t.Fatalf("unexpected tab title sync calls: %#v", fake.tabTitles)
 	}
 }

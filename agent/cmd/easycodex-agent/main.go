@@ -132,6 +132,12 @@ func main() {
 	startTrayHelper(logger, cfg, displayConfigPath)
 	openURL(network.LocalURL+"/settings", logger)
 	autoLaunchInstances(context.Background(), logger, tracker, cfg)
+	go func() {
+		time.Sleep(700 * time.Millisecond)
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		app.ForceSyncWezTermTitles(ctx)
+	}()
 	defer cleanupLaunchedGUI(logger, tracker, cfg)
 
 	errCh := make(chan error, 1)
@@ -359,6 +365,10 @@ func (tracked *trackedWezTerm) GetText(ctx context.Context, class, paneID string
 
 func (tracked *trackedWezTerm) SendText(ctx context.Context, class, paneID, text string, noPaste bool) error {
 	return tracked.cli.SendText(ctx, class, paneID, text, noPaste)
+}
+
+func (tracked *trackedWezTerm) SetTabTitle(ctx context.Context, class, paneID, title string) error {
+	return tracked.cli.SetTabTitle(ctx, class, paneID, title)
 }
 
 func (tracked *trackedWezTerm) KillPane(ctx context.Context, class, paneID string) error {
