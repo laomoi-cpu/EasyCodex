@@ -2206,7 +2206,7 @@ func TestForceSyncWezTermTitlesUsesDefaultSummaryTitleAndBypassesCache(t *testin
 	srv.ForceSyncWezTermTitles(context.Background())
 	srv.ForceSyncWezTermTitles(context.Background())
 
-	expected := tabTitleCall{class: "easycodex", paneID: "3", title: "default-title-from-s"}
+	expected := tabTitleCall{class: "easycodex", paneID: "3", title: "default-title-from-summary"}
 	if len(fake.tabTitles) != 2 || fake.tabTitles[0] != expected || fake.tabTitles[1] != expected {
 		t.Fatalf("unexpected forced tab title sync calls: %#v", fake.tabTitles)
 	}
@@ -2240,7 +2240,7 @@ func TestForceSyncWezTermTitlesHydratesPaneSessionFromText(t *testing.T) {
 	if inputs["3"].CodexSessionID != sessionID {
 		t.Fatalf("codex session mapping was not hydrated: %#v", inputs)
 	}
-	expected := tabTitleCall{class: "easycodex", paneID: "3", title: "hydrated-title-summa"}
+	expected := tabTitleCall{class: "easycodex", paneID: "3", title: "hydrated-title-summary"}
 	if len(fake.tabTitles) != 1 || fake.tabTitles[0] != expected {
 		t.Fatalf("unexpected forced tab title sync calls: %#v", fake.tabTitles)
 	}

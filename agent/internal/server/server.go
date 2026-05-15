@@ -1463,8 +1463,8 @@ func defaultCodexSessionTitle(summary string) string {
 		return ""
 	}
 	runes := []rune(summary)
-	if len(runes) > 20 {
-		return string(runes[:20])
+	if len(runes) > 30 {
+		return string(runes[:30])
 	}
 	return summary
 }
